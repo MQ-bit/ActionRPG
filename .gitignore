@@ -1,0 +1,30 @@
+# Unreal Engine generated
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/
+.vs/
+.idea/
+.vscode/
+*.VC.db
+*.opensdf
+*.opendb
+*.sdf
+*.sln
+*.suo
+*.xcodeproj
+*.xcworkspace
+
+# Plugins generated
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+
+# Packaged builds
+/Packaged/
+
+# Course assets that may not be redistributable (add specific paths here)
+# Content/CourseAssets/
+
+# VS 2026 solution format
+*.slnx
