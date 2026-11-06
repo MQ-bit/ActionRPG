@@ -22,7 +22,11 @@ class ACTIONROGUELIKE_API UARAttributeSet : public UAttributeSet
 public:
 	UARAttributeSet();
 
+	// Final (current) value clamp.
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
+	// Base value clamp: without it, overheal/overkill from instant effects accumulates in the base value.
+	virtual void PreAttributeBaseChange(const FGameplayAttribute& Attribute, float& NewValue) const override;
+	virtual void PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue) override;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Attributes")
 	FGameplayAttributeData Health;
