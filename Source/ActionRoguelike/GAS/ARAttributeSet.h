@@ -1,0 +1,34 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "AttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "ARAttributeSet.generated.h"
+
+#define AR_ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
+	GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \
+	GAMEPLAYATTRIBUTE_VALUE_GETTER(PropertyName) \
+	GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
+	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
+
+/** Core combat attributes. Modify them only through Gameplay Effects. */
+UCLASS()
+class ACTIONROGUELIKE_API UARAttributeSet : public UAttributeSet
+{
+	GENERATED_BODY()
+
+public:
+	UARAttributeSet();
+
+	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Attributes")
+	FGameplayAttributeData Health;
+	AR_ATTRIBUTE_ACCESSORS(UARAttributeSet, Health)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Attributes")
+	FGameplayAttributeData MaxHealth;
+	AR_ATTRIBUTE_ACCESSORS(UARAttributeSet, MaxHealth)
+};
