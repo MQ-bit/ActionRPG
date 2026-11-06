@@ -77,6 +77,12 @@ void AARPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 
 void AARPlayerCharacter::Move(const FInputActionValue& Value)
 {
+	// The attack montage animates the whole body, so moving during it looks like sliding.
+	if (IsAttacking())
+	{
+		return;
+	}
+
 	const FVector2D Input = Value.Get<FVector2D>();
 	const FRotator YawRotation(0.f, GetControlRotation().Yaw, 0.f);
 
@@ -92,10 +98,15 @@ void AARPlayerCharacter::Look(const FInputActionValue& Value)
 	AddControllerPitchInput(Input.Y);
 }
 
-void AARPlayerCharacter::Attack()
+bool AARPlayerCharacter::IsAttacking() const
 {
 	const UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-	if (!AttackMontage || !AnimInstance || AnimInstance->Montage_IsPlaying(AttackMontage))
+	return AttackMontage && AnimInstance && AnimInstance->Montage_IsPlaying(AttackMontage);
+}
+
+void AARPlayerCharacter::Attack()
+{
+	if (!AttackMontage || IsAttacking())
 	{
 		return;
 	}

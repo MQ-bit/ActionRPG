@@ -31,6 +31,7 @@ protected:
 
 	/** Temporary stage-1 attack: plays a montage. Moves into a GameplayAbility in stage 2 (GAS). */
 	void Attack();
+	bool IsAttacking() const;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;
