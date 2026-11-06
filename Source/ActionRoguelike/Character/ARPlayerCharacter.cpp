@@ -2,8 +2,6 @@
 
 #include "Character/ARPlayerCharacter.h"
 
-#include "Animation/AnimInstance.h"
-#include "Animation/AnimMontage.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "EnhancedInputComponent.h"
@@ -11,6 +9,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "GAS/ARAbilitySystemComponent.h"
+#include "GAS/ARGameplayTags.h"
 #include "InputActionValue.h"
 
 AARPlayerCharacter::AARPlayerCharacter()
@@ -70,7 +70,7 @@ void AARPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		}
 		if (AttackAction)
 		{
-			EIC->BindAction(AttackAction, ETriggerEvent::Started, this, &AARPlayerCharacter::Attack);
+			EIC->BindAction(AttackAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnAttackInput);
 		}
 	}
 }
@@ -78,7 +78,7 @@ void AARPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 void AARPlayerCharacter::Move(const FInputActionValue& Value)
 {
 	// The attack montage animates the whole body, so moving during it looks like sliding.
-	if (IsAttacking())
+	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag()))
 	{
 		return;
 	}
@@ -98,18 +98,7 @@ void AARPlayerCharacter::Look(const FInputActionValue& Value)
 	AddControllerPitchInput(Input.Y);
 }
 
-bool AARPlayerCharacter::IsAttacking() const
+void AARPlayerCharacter::OnAttackInput()
 {
-	const UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-	return AttackMontage && AnimInstance && AnimInstance->Montage_IsPlaying(AttackMontage);
-}
-
-void AARPlayerCharacter::Attack()
-{
-	if (!AttackMontage || IsAttacking())
-	{
-		return;
-	}
-
-	PlayAnimMontage(AttackMontage);
+	AbilitySystemComponent->AbilityInputTagPressed(TAG_InputTag_Attack.GetTag());
 }

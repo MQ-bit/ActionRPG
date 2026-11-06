@@ -9,6 +9,7 @@
 
 class UARAbilitySystemComponent;
 class UARAttributeSet;
+class UARGameplayAbility;
 
 /** Shared base for player and enemy characters. Owns the ASC and attributes (single-player: no PlayerState ownership). */
 UCLASS(Abstract)
@@ -29,4 +30,8 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<UARAttributeSet> AttributeSet;
+
+	/** Granted in BeginPlay. Set in the character's data-only Blueprint. */
+	UPROPERTY(EditDefaultsOnly, Category = "Abilities")
+	TArray<TSubclassOf<UARGameplayAbility>> StartupAbilities;
 };

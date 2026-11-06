@@ -24,4 +24,9 @@ void AARCharacterBase::BeginPlay()
 
 	// Owner and avatar are the same actor.
 	AbilitySystemComponent->InitAbilityActorInfo(this, this);
+
+	for (const TSubclassOf<UARGameplayAbility>& AbilityClass : StartupAbilities)
+	{
+		AbilitySystemComponent->GiveStartupAbility(AbilityClass);
+	}
 }
