@@ -6,6 +6,7 @@
 #include "Character/ARCharacterBase.h"
 #include "ARPlayerCharacter.generated.h"
 
+class UAnimMontage;
 class UCameraComponent;
 class USpringArmComponent;
 class UInputAction;
@@ -28,6 +29,9 @@ protected:
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 
+	/** Temporary stage-1 attack: plays a montage. Moves into a GameplayAbility in stage 2 (GAS). */
+	void Attack();
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;
 
@@ -42,4 +46,10 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputAction> LookAction;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TObjectPtr<UInputAction> AttackAction;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Combat")
+	TObjectPtr<UAnimMontage> AttackMontage;
 };

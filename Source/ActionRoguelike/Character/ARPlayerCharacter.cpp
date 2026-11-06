@@ -2,6 +2,8 @@
 
 #include "Character/ARPlayerCharacter.h"
 
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "EnhancedInputComponent.h"
@@ -66,6 +68,10 @@ void AARPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		{
 			EIC->BindAction(LookAction, ETriggerEvent::Triggered, this, &AARPlayerCharacter::Look);
 		}
+		if (AttackAction)
+		{
+			EIC->BindAction(AttackAction, ETriggerEvent::Started, this, &AARPlayerCharacter::Attack);
+		}
 	}
 }
 
@@ -84,4 +90,15 @@ void AARPlayerCharacter::Look(const FInputActionValue& Value)
 
 	AddControllerYawInput(Input.X);
 	AddControllerPitchInput(Input.Y);
+}
+
+void AARPlayerCharacter::Attack()
+{
+	const UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (!AttackMontage || !AnimInstance || AnimInstance->Montage_IsPlaying(AttackMontage))
+	{
+		return;
+	}
+
+	PlayAnimMontage(AttackMontage);
 }
