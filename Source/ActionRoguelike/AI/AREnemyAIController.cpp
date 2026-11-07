@@ -20,6 +20,7 @@ AAREnemyAIController::AAREnemyAIController()
 	Sight->DetectionByAffiliation.bDetectEnemies = true;
 	Sight->DetectionByAffiliation.bDetectNeutrals = false;
 	Sight->DetectionByAffiliation.bDetectFriendlies = false;
+	Sight->SetMaxAge(ARAI::TargetMemorySeconds);
 
 	GetPerceptionComponent()->ConfigureSense(*Sight);
 	GetPerceptionComponent()->SetDominantSense(Sight->GetSenseImplementation());
@@ -30,6 +31,7 @@ void AAREnemyAIController::BeginPlay()
 	Super::BeginPlay();
 
 	GetPerceptionComponent()->OnTargetPerceptionUpdated.AddDynamic(this, &AAREnemyAIController::OnTargetPerceptionUpdated);
+	GetPerceptionComponent()->OnTargetPerceptionForgotten.AddDynamic(this, &AAREnemyAIController::OnTargetPerceptionForgotten);
 }
 
 void AAREnemyAIController::OnPossess(APawn* InPawn)
@@ -61,11 +63,17 @@ void AAREnemyAIController::OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus 
 		return;
 	}
 
+	// Losing sight keeps the target; it is dropped when perception forgets it (ARAI::TargetMemorySeconds later).
 	if (Stimulus.WasSuccessfullySensed())
 	{
 		BlackboardComp->SetValueAsObject(ARBlackboard::TargetActor, Actor);
 	}
-	else if (BlackboardComp->GetValueAsObject(ARBlackboard::TargetActor) == Actor)
+}
+
+void AAREnemyAIController::OnTargetPerceptionForgotten(AActor* Actor)
+{
+	UBlackboardComponent* BlackboardComp = GetBlackboardComponent();
+	if (BlackboardComp && Actor && BlackboardComp->GetValueAsObject(ARBlackboard::TargetActor) == Actor)
 	{
 		BlackboardComp->ClearValue(ARBlackboard::TargetActor);
 	}

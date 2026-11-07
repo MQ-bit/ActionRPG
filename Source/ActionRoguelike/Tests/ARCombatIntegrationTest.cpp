@@ -6,6 +6,7 @@
 #include "Tests/AutomationCommon.h"
 
 #include "AbilitySystemComponent.h"
+#include "AI/AREnemyAIController.h"
 #include "Character/AREnemyCharacter.h"
 #include "Character/ARPlayerCharacter.h"
 #include "Components/CapsuleComponent.h"
@@ -17,6 +18,9 @@
 #include "GAS/ARAttributeSet.h"
 #include "GAS/ARGameplayTags.h"
 #include "GAS/ARGE_Damage.h"
+#include "Perception/AIPerceptionComponent.h"
+#include "Perception/AISenseConfig.h"
+#include "Perception/AISense_Sight.h"
 
 #define AR_TEST_FLAGS (EAutomationTestFlags::EditorContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
 
@@ -157,6 +161,34 @@ bool FARPlayerDeathTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("collision is off"), Player->GetCapsuleComponent()->GetCollisionEnabled() == ECollisionEnabled::NoCollision);
 
 	Player->OnDied.Remove(Handle);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAREnemyTurnsInPlaceTest, "ActionRoguelike.Combat.EnemyCanTurnWhileStanding", AR_TEST_FLAGS)
+bool FAREnemyTurnsInPlaceTest::RunTest(const FString& Parameters)
+{
+	FARCombatFixture F;
+	if (!F.Init(*this)) { return false; }
+
+	// The attack branch waits on BTTask_RotateToFaceBBEntry, which only ends if a standing pawn follows the controller.
+	const UCharacterMovementComponent* Movement = F.Enemy->GetCharacterMovement();
+	TestTrue(TEXT("pawn follows the controller's desired rotation"), Movement->bUseControllerDesiredRotation);
+	TestFalse(TEXT("orient-to-movement would not turn a standing pawn"), Movement->bOrientRotationToMovement);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAREnemyRemembersTargetTest, "ActionRoguelike.Combat.EnemyRemembersTargetAfterLosingSight", AR_TEST_FLAGS)
+bool FAREnemyRemembersTargetTest::RunTest(const FString& Parameters)
+{
+	FARCombatFixture F;
+	if (!F.Init(*this)) { return false; }
+
+	AAREnemyAIController* Controller = Cast<AAREnemyAIController>(F.Enemy->GetController());
+	if (!TestNotNull(TEXT("enemy AI controller"), Controller)) { return false; }
+
+	const UAISenseConfig* Sight = Controller->GetPerceptionComponent()->GetSenseConfig(UAISense::GetSenseID<UAISense_Sight>());
+	if (!TestNotNull(TEXT("sight config"), Sight)) { return false; }
+	TestEqual(TEXT("a lost target is remembered for ARAI::TargetMemorySeconds"), Sight->GetMaxAge(), ARAI::TargetMemorySeconds);
 	return true;
 }
 

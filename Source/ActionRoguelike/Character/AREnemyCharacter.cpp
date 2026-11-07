@@ -15,9 +15,11 @@ AAREnemyCharacter::AAREnemyCharacter()
 
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.f);
 
-	// The AI controller drives yaw through movement; the mesh turns toward the movement direction.
+	// The pawn follows the controller's desired rotation (the move direction while walking, the focus target while
+	// standing). Orient-to-movement would never turn a standing pawn, so BTTask_RotateToFaceBBEntry would wait forever.
 	bUseControllerRotationYaw = false;
-	GetCharacterMovement()->bOrientRotationToMovement = true;
+	GetCharacterMovement()->bOrientRotationToMovement = false;
+	GetCharacterMovement()->bUseControllerDesiredRotation = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->MaxWalkSpeed = 300.f;
 }

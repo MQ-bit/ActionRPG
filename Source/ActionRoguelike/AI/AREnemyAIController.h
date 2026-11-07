@@ -14,6 +14,12 @@ namespace ARBlackboard
 	inline const FName TargetActor = TEXT("TargetActor");
 }
 
+namespace ARAI
+{
+	/** How long an enemy keeps its target after losing sight of it. */
+	inline constexpr float TargetMemorySeconds = 5.f;
+}
+
 /**
  * Runs the behavior tree set on the possessed AAREnemyCharacter and feeds it the perceived hostile target
  * (sight only; hostile means a different team, see ARTeam).
@@ -32,4 +38,8 @@ protected:
 
 	UFUNCTION()
 	void OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus);
+
+	/** Called when the sight stimulus of an actor has been lost for longer than ARAI::TargetMemorySeconds. */
+	UFUNCTION()
+	void OnTargetPerceptionForgotten(AActor* Actor);
 };
