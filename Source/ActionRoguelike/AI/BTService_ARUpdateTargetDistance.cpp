@@ -2,6 +2,7 @@
 
 #include "AI/BTService_ARUpdateTargetDistance.h"
 
+#include "ActionRoguelike.h"
 #include "AIController.h"
 #include "BehaviorTree/BehaviorTreeComponent.h"
 #include "BehaviorTree/BlackboardComponent.h"
@@ -45,15 +46,29 @@ void UBTService_ARUpdateTargetDistance::TickNode(UBehaviorTreeComponent& OwnerCo
 		return;
 	}
 
+	const bool bWasInRange = Blackboard->GetValueAsBool(InAttackRangeKey.SelectedKeyName);
+
 	const AActor* Target = Cast<AActor>(Blackboard->GetValueAsObject(TargetKey.SelectedKeyName));
 	if (!Target)
 	{
 		Blackboard->SetValueAsBool(InAttackRangeKey.SelectedKeyName, false);
 		Blackboard->ClearValue(DistanceKey.SelectedKeyName);
+		if (bWasInRange)
+		{
+			UE_LOG(LogAR, Verbose, TEXT("[BT] %s: target lost while in attack range"), *GetNameSafe(Pawn));
+		}
 		return;
 	}
 
 	const float Distance = FVector::Dist2D(Pawn->GetActorLocation(), Target->GetActorLocation());
+	const bool bInRange = Distance <= AttackRange;
 	Blackboard->SetValueAsFloat(DistanceKey.SelectedKeyName, Distance);
-	Blackboard->SetValueAsBool(InAttackRangeKey.SelectedKeyName, Distance <= AttackRange);
+	Blackboard->SetValueAsBool(InAttackRangeKey.SelectedKeyName, bInRange);
+
+	// Log only the transitions; the service ticks several times a second.
+	if (bInRange != bWasInRange)
+	{
+		UE_LOG(LogAR, Verbose, TEXT("[BT] %s: attack range %s (target %s, dist %.0f, range %.0f)"),
+			*GetNameSafe(Pawn), bInRange ? TEXT("entered") : TEXT("left"), *GetNameSafe(Target), Distance, AttackRange);
+	}
 }

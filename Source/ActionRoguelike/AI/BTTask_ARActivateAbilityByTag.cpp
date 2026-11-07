@@ -2,6 +2,7 @@
 
 #include "AI/BTTask_ARActivateAbilityByTag.h"
 
+#include "ActionRoguelike.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "AIController.h"
@@ -34,6 +35,7 @@ EBTNodeResult::Type UBTTask_ARActivateAbilityByTag::ExecuteTask(UBehaviorTreeCom
 
 	if (!bActivated)
 	{
+		UE_LOG(LogAR, Verbose, TEXT("[BT] %s: TryActivate %s failed"), *GetNameSafe(ASC->GetAvatarActor()), *AbilityTag.ToString());
 		Unbind();
 		return EBTNodeResult::Failed;
 	}
@@ -41,9 +43,12 @@ EBTNodeResult::Type UBTTask_ARActivateAbilityByTag::ExecuteTask(UBehaviorTreeCom
 	// An ability that ended inside TryActivate cannot call FinishLatentTask from here; report it as the result instead.
 	if (ResultWhenEndedDuringExecute != EBTNodeResult::InProgress)
 	{
+		UE_LOG(LogAR, Verbose, TEXT("[BT] %s: %s ended inside TryActivate, result %d"),
+			*GetNameSafe(ASC->GetAvatarActor()), *AbilityTag.ToString(), (int32)ResultWhenEndedDuringExecute);
 		Unbind();
 		return ResultWhenEndedDuringExecute;
 	}
+	UE_LOG(LogAR, Verbose, TEXT("[BT] %s: %s started, waiting for it to end"), *GetNameSafe(ASC->GetAvatarActor()), *AbilityTag.ToString());
 	return EBTNodeResult::InProgress;
 }
 
@@ -51,6 +56,7 @@ EBTNodeResult::Type UBTTask_ARActivateAbilityByTag::AbortTask(UBehaviorTreeCompo
 {
 	if (UAbilitySystemComponent* ASC = BoundASC.Get())
 	{
+		UE_LOG(LogAR, Verbose, TEXT("[BT] %s: task aborted, cancelling %s"), *GetNameSafe(ASC->GetAvatarActor()), *AbilityTag.ToString());
 		const FGameplayTagContainer Tags(AbilityTag);
 		ASC->CancelAbilities(&Tags);
 	}
@@ -60,6 +66,7 @@ EBTNodeResult::Type UBTTask_ARActivateAbilityByTag::AbortTask(UBehaviorTreeCompo
 
 void UBTTask_ARActivateAbilityByTag::OnTaskFinished(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, EBTNodeResult::Type TaskResult)
 {
+	UE_LOG(LogAR, Verbose, TEXT("[BT] %s: task finished, result %d"), *GetNameSafe(OwnerComp.GetAIOwner() ? OwnerComp.GetAIOwner()->GetPawn() : nullptr), (int32)TaskResult);
 	Unbind();
 	Super::OnTaskFinished(OwnerComp, NodeMemory, TaskResult);
 }
@@ -78,7 +85,10 @@ void UBTTask_ARActivateAbilityByTag::OnAbilityEnded(const FAbilityEndedData& Dat
 		return;
 	}
 
-	if (UBehaviorTreeComponent* OwnerComp = OwnerCompWeak.Get())
+	UBehaviorTreeComponent* OwnerComp = OwnerCompWeak.Get();
+	UE_LOG(LogAR, Verbose, TEXT("[BT] %s: ability ended (cancelled %d), owner component %s"),
+		*GetNameSafe(BoundASC.IsValid() ? BoundASC->GetAvatarActor() : nullptr), Data.bWasCancelled ? 1 : 0, OwnerComp ? TEXT("valid") : TEXT("GONE"));
+	if (OwnerComp)
 	{
 		FinishLatentTask(*OwnerComp, Result);
 	}
