@@ -14,6 +14,8 @@ class ACTIONROGUELIKE_API UARGameplayAbility : public UGameplayAbility
 	GENERATED_BODY()
 
 public:
+	UARGameplayAbility();
+
 	const FGameplayTag& GetInputTag() const { return InputTag; }
 
 protected:

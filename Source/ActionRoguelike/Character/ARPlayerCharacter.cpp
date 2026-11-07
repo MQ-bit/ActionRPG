@@ -15,6 +15,8 @@
 
 AARPlayerCharacter::AARPlayerCharacter()
 {
+	TeamId = ARTeam::Player;
+
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.f);
 
 	// The camera drives yaw; the mesh turns toward the movement direction instead.

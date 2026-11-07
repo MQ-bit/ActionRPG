@@ -6,9 +6,29 @@
 #include "Character/ARCharacterBase.h"
 #include "AREnemyCharacter.generated.h"
 
-/** Minimal concrete enemy: shares the ASC and attributes from the base. AI is added in stage 3 of the task board. */
+class UBehaviorTree;
+
+/**
+ * Basic enemy: team Enemy, AI controller, behavior tree set in a data-only Blueprint.
+ * Without a behavior tree it just stands there (used as the training dummy).
+ */
 UCLASS()
 class ACTIONROGUELIKE_API AAREnemyCharacter : public AARCharacterBase
 {
 	GENERATED_BODY()
+
+public:
+	AAREnemyCharacter();
+
+	UBehaviorTree* GetBehaviorTree() const { return BehaviorTree; }
+
+protected:
+	virtual void OnDeath() override;
+
+	UPROPERTY(EditDefaultsOnly, Category = "AI")
+	TObjectPtr<UBehaviorTree> BehaviorTree;
+
+	/** Seconds until the body is removed after death. 0 keeps it. */
+	UPROPERTY(EditDefaultsOnly, Category = "Death", meta = (ClampMin = "0"))
+	float DeathLifeSpan = 4.f;
 };

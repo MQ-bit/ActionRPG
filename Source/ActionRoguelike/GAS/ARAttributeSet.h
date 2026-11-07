@@ -13,6 +13,9 @@
 	GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
 	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
+/** Broadcast after Health changed: old value, new value, current MaxHealth. */
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FAROnHealthChanged, float /*OldValue*/, float /*NewValue*/, float /*MaxHealth*/);
+
 /** Core combat attributes. Modify them only through Gameplay Effects. */
 UCLASS()
 class ACTIONROGUELIKE_API UARAttributeSet : public UAttributeSet
@@ -27,6 +30,9 @@ public:
 	// Base value clamp: without it, overheal/overkill from instant effects accumulates in the base value.
 	virtual void PreAttributeBaseChange(const FGameplayAttribute& Attribute, float& NewValue) const override;
 	virtual void PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue) override;
+
+	/** Used by death handling now and by the HUD later. Unbind in EndPlay. */
+	FAROnHealthChanged OnHealthChanged;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Attributes")
 	FGameplayAttributeData Health;

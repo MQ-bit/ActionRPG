@@ -45,6 +45,7 @@ void UARAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribute, f
 	if (Attribute == GetHealthAttribute())
 	{
 		UE_LOG(LogAR, Display, TEXT("%s Health %.0f -> %.0f"), *GetNameSafe(GetOwningActor()), OldValue, NewValue);
+		OnHealthChanged.Broadcast(OldValue, NewValue, GetMaxHealth());
 	}
 	else if (Attribute == GetMaxHealthAttribute() && GetHealth() > NewValue)
 	{

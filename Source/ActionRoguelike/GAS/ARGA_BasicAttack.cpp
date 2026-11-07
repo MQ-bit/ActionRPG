@@ -10,8 +10,10 @@
 #include "DrawDebugHelpers.h"
 #include "Engine/OverlapResult.h"
 #include "GameFramework/Actor.h"
+#include "Core/ARTeam.h"
 #include "GameplayEffect.h"
 #include "GAS/ARGameplayTags.h"
+#include "GenericTeamAgentInterface.h"
 
 UARGA_BasicAttack::UARGA_BasicAttack()
 {
@@ -142,6 +144,8 @@ void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 	}
 #endif
 
+	const IGenericTeamAgentInterface* SourceTeam = Cast<IGenericTeamAgentInterface>(Avatar);
+
 	TSet<AActor*> Damaged;
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
@@ -151,6 +155,14 @@ void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 			continue;
 		}
 		Damaged.Add(Target);
+
+		// Only hostile teams are hit, so enemies do not hurt each other.
+		const IGenericTeamAgentInterface* TargetTeam = Cast<IGenericTeamAgentInterface>(Target);
+		if (SourceTeam && TargetTeam
+			&& !ARTeam::IsHostile(SourceTeam->GetGenericTeamId().GetId(), TargetTeam->GetGenericTeamId().GetId()))
+		{
+			continue;
+		}
 
 		UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
 		if (!TargetASC)
