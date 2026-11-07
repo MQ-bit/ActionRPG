@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Abilities/GameplayAbilityTypes.h"
+#include "GAS/ARComboState.h"
 #include "GAS/ARGameplayAbility.h"
 #include "ARGA_BasicAttack.generated.h"
 
@@ -36,10 +37,11 @@ public:
 
 protected:
 	void PlayStep(int32 StepIndex);
+	void ApplyComboAction(FARComboState::EAction Action);
 
-	// Montage delegates are native and match by montage, so callbacks from an already replaced step are ignored.
-	void OnMontageBlendingOut(UAnimMontage* Montage, bool bInterrupted);
-	void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	// Montage delegates carry the step's playback id, so callbacks of a replaced step or ended ability are ignored.
+	void OnMontageBlendingOut(UAnimMontage* Montage, bool bInterrupted, int32 PlaybackId);
+	void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted, int32 PlaybackId);
 
 	UFUNCTION()
 	void OnHitEvent(FGameplayEventData Payload);
@@ -67,9 +69,5 @@ protected:
 	bool bDrawDebugHit = false;
 
 private:
-	int32 ComboIndex = 0;
-	bool bComboWindowOpen = false;
-	bool bNextStepQueued = false;
-	/** The current montage already started blending out without a queued step; a late press starts the next step directly. */
-	bool bStepBlendingOut = false;
+	FARComboState ComboState;
 };

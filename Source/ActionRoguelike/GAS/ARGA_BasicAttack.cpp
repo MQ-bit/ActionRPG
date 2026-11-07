@@ -52,18 +52,34 @@ void UARGA_BasicAttack::PlayStep(int32 StepIndex)
 		return;
 	}
 
-	ComboIndex = StepIndex;
-	bComboWindowOpen = false;
-	bNextStepQueued = false;
-	bStepBlendingOut = false;
+	const int32 PlaybackId = ComboState.BeginStep(StepIndex, ComboMontages.Num());
 
 	FOnMontageBlendingOutStarted BlendingOut;
-	BlendingOut.BindUObject(this, &UARGA_BasicAttack::OnMontageBlendingOut);
+	BlendingOut.BindUObject(this, &UARGA_BasicAttack::OnMontageBlendingOut, PlaybackId);
 	AnimInstance->Montage_SetBlendingOutDelegate(BlendingOut, Montage);
 
 	FOnMontageEnded Ended;
-	Ended.BindUObject(this, &UARGA_BasicAttack::OnMontageEnded);
+	Ended.BindUObject(this, &UARGA_BasicAttack::OnMontageEnded, PlaybackId);
 	AnimInstance->Montage_SetEndDelegate(Ended, Montage);
+}
+
+void UARGA_BasicAttack::ApplyComboAction(FARComboState::EAction Action)
+{
+	switch (Action)
+	{
+	case FARComboState::EAction::PlayNextStep:
+		PlayStep(ComboState.GetNextStepIndex());
+		break;
+	case FARComboState::EAction::End:
+		// The ability (and State.Attacking) lasts until the last played montage has fully ended.
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+		break;
+	case FARComboState::EAction::Cancel:
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		break;
+	case FARComboState::EAction::None:
+		break;
+	}
 }
 
 void UARGA_BasicAttack::InputPressed(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
@@ -71,26 +87,15 @@ void UARGA_BasicAttack::InputPressed(const FGameplayAbilitySpecHandle Handle, co
 {
 	Super::InputPressed(Handle, ActorInfo, ActivationInfo);
 
-	// Only after the current step's hit frame, and only if there is a next step.
-	if (!bComboWindowOpen || !ComboMontages.IsValidIndex(ComboIndex + 1))
-	{
-		return;
-	}
-
-	if (bStepBlendingOut)
-	{
-		// The queue point (blend-out start) has passed; chain right away instead of dropping the press.
-		PlayStep(ComboIndex + 1);
-	}
-	else
-	{
-		bNextStepQueued = true;
-	}
+	ApplyComboAction(ComboState.OnPressed());
 }
 
 void UARGA_BasicAttack::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
+	// Montage events still queued from this activation must not touch a later one.
+	ComboState.Invalidate();
+
 	// A cancelled ability must not leave its montage playing.
 	if (bWasCancelled && ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
 	{
@@ -100,44 +105,20 @@ void UARGA_BasicAttack::EndAbility(const FGameplayAbilitySpecHandle Handle, cons
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
-void UARGA_BasicAttack::OnMontageBlendingOut(UAnimMontage* Montage, bool bInterrupted)
+void UARGA_BasicAttack::OnMontageBlendingOut(UAnimMontage* /*Montage*/, bool bInterrupted, int32 PlaybackId)
 {
-	if (!ComboMontages.IsValidIndex(ComboIndex) || Montage != ComboMontages[ComboIndex])
-	{
-		return;
-	}
-
-	if (bInterrupted)
-	{
-		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
-		return;
-	}
-
-	if (bNextStepQueued)
-	{
-		PlayStep(ComboIndex + 1);
-	}
-	else
-	{
-		bStepBlendingOut = true;
-	}
+	ApplyComboAction(ComboState.OnBlendingOut(PlaybackId, bInterrupted));
 }
 
-void UARGA_BasicAttack::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+void UARGA_BasicAttack::OnMontageEnded(UAnimMontage* /*Montage*/, bool bInterrupted, int32 PlaybackId)
 {
-	// The ability (and State.Attacking) lasts until the last played montage has fully ended.
-	if (!ComboMontages.IsValidIndex(ComboIndex) || Montage != ComboMontages[ComboIndex])
-	{
-		return;
-	}
-
-	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, bInterrupted);
+	ApplyComboAction(ComboState.OnEnded(PlaybackId, bInterrupted));
 }
 
 void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 {
 	// The hit frame opens the input window for the next step.
-	bComboWindowOpen = true;
+	ComboState.OnHit();
 
 	AActor* Avatar = GetAvatarActorFromActorInfo();
 	UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
