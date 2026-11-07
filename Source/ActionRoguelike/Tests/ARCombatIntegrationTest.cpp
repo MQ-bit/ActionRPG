@@ -10,6 +10,8 @@
 #include "Character/ARPlayerCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "GameplayEffect.h"
 #include "GAS/ARAbilitySystemComponent.h"
 #include "GAS/ARAttributeSet.h"
@@ -123,6 +125,50 @@ bool FARTeamAttitudeTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("enemies are friendly to each other"), F.Enemy->GetTeamAttitudeTowards(*OtherEnemy) == ETeamAttitude::Friendly);
 	TestEqual(TEXT("enemy team id"), (int32)F.Enemy->GetGenericTeamId().GetId(), (int32)ARTeam::Enemy);
 	TestEqual(TEXT("player team id"), (int32)Player->GetGenericTeamId().GetId(), (int32)ARTeam::Player);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARPlayerDeathTest, "ActionRoguelike.Combat.PlayerDeathKeepsControllerAndBlocksMovement", AR_TEST_FLAGS)
+bool FARPlayerDeathTest::RunTest(const FString& Parameters)
+{
+	FARCombatFixture F;
+	if (!F.Init(*this)) { return false; }
+
+	AARPlayerCharacter* Player = F.Spawn<AARPlayerCharacter>();
+	APlayerController* PC = F.Spawn<APlayerController>();
+	if (!TestNotNull(TEXT("player"), Player) || !TestNotNull(TEXT("player controller"), PC)) { return false; }
+	PC->Possess(Player);
+
+	UARAbilitySystemComponent* PlayerASC = Player->FindComponentByClass<UARAbilitySystemComponent>();
+	if (!TestNotNull(TEXT("player ASC"), PlayerASC)) { return false; }
+
+	int32 DiedCount = 0;
+	const FDelegateHandle Handle = Player->OnDied.AddLambda([&](AARCharacterBase*) { ++DiedCount; });
+
+	FGameplayEffectSpecHandle Spec = PlayerASC->MakeOutgoingSpec(UARGE_Damage::StaticClass(), 1.f, PlayerASC->MakeEffectContext());
+	Spec.Data->SetSetByCallerMagnitude(TAG_Data_Damage.GetTag(), -1000.f);
+	PlayerASC->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
+
+	TestTrue(TEXT("player is dead"), Player->IsDead());
+	TestEqual(TEXT("died broadcast once"), DiedCount, 1);
+	TestTrue(TEXT("State.Dead tag is set"), PlayerASC->HasMatchingGameplayTag(TAG_State_Dead.GetTag()));
+	TestTrue(TEXT("a dead player keeps its controller (the camera stays)"), Player->GetController() == PC);
+	TestTrue(TEXT("movement is disabled"), Player->GetCharacterMovement()->MovementMode == MOVE_None);
+	TestTrue(TEXT("collision is off"), Player->GetCapsuleComponent()->GetCollisionEnabled() == ECollisionEnabled::NoCollision);
+
+	Player->OnDied.Remove(Handle);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARDeadEnemyDetachesControllerTest, "ActionRoguelike.Combat.DeadEnemyLosesItsController", AR_TEST_FLAGS)
+bool FARDeadEnemyDetachesControllerTest::RunTest(const FString& Parameters)
+{
+	FARCombatFixture F;
+	if (!F.Init(*this)) { return false; }
+
+	TestNotNull(TEXT("enemy has an AI controller before death"), F.Enemy->GetController());
+	F.ApplyDamage(-1000.f);
+	TestNull(TEXT("a dead enemy loses its controller, which stops its behavior tree"), F.Enemy->GetController());
 	return true;
 }
 
