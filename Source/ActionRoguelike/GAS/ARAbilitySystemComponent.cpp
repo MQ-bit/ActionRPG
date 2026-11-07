@@ -35,6 +35,20 @@ void UARAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag& Input
 
 	for (const FGameplayAbilitySpecHandle& Handle : Handles)
 	{
-		TryActivateAbility(Handle);
+		FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
+		if (!Spec)
+		{
+			continue;
+		}
+
+		if (Spec->IsActive())
+		{
+			// Already running (e.g. a combo): let the ability decide what a repeated press means.
+			AbilitySpecInputPressed(*Spec);
+		}
+		else
+		{
+			TryActivateAbility(Handle);
+		}
 	}
 }

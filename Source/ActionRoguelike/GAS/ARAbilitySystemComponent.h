@@ -19,6 +19,6 @@ public:
 	/** Grants the ability and remembers its input tag on the spec. */
 	void GiveStartupAbility(TSubclassOf<UARGameplayAbility> AbilityClass);
 
-	/** Tries to activate every granted ability bound to this input tag. */
+	/** Activates every granted ability bound to this input tag, or forwards the press to it if it is already active. */
 	void AbilityInputTagPressed(const FGameplayTag& InputTag);
 };

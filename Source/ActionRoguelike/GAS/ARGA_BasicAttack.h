@@ -11,8 +11,10 @@ class UAnimMontage;
 class UGameplayEffect;
 
 /**
- * Plays the attack montage and holds State.Attacking until it ends. When the montage sends Event.Attack.Hit
- * (UARAnimNotify_AttackHit), actors with an ASC in front of the avatar take damage. Values come from a data-only Blueprint.
+ * Light attack combo. Plays ComboMontages one after another and holds State.Attacking until the combo ends.
+ * Each montage sends Event.Attack.Hit (UARAnimNotify_AttackHit) at its hit frame: actors with an ASC in front of
+ * the avatar take damage and the input window for the next step opens. Pressing attack inside the window queues
+ * the next step, which starts as the current montage blends out. Values come from a data-only Blueprint.
  */
 UCLASS()
 class ACTIONROGUELIKE_API UARGA_BasicAttack : public UARGameplayAbility
@@ -25,15 +27,26 @@ public:
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 
+	/** Called by the ASC when attack is pressed while this ability is already active. */
+	virtual void InputPressed(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo) override;
+
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
+
 protected:
-	UFUNCTION()
-	void OnMontageEnded();
+	void PlayStep(int32 StepIndex);
+
+	// Montage delegates are native and match by montage, so callbacks from an already replaced step are ignored.
+	void OnMontageBlendingOut(UAnimMontage* Montage, bool bInterrupted);
+	void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
 	UFUNCTION()
 	void OnHitEvent(FGameplayEventData Payload);
 
+	/** One montage per combo step, in order. Each needs an AR Attack Hit notify at its hit frame. */
 	UPROPERTY(EditDefaultsOnly, Category = "Attack")
-	TObjectPtr<UAnimMontage> AttackMontage;
+	TArray<TObjectPtr<UAnimMontage>> ComboMontages;
 
 	/** Applied to every target hit. Uses SetByCaller Data.Damage. */
 	UPROPERTY(EditDefaultsOnly, Category = "Attack|Damage")
@@ -52,4 +65,9 @@ protected:
 	/** Draws the hit sphere for a moment. For tuning only. */
 	UPROPERTY(EditDefaultsOnly, Category = "Attack|Hit")
 	bool bDrawDebugHit = false;
+
+private:
+	int32 ComboIndex = 0;
+	bool bComboWindowOpen = false;
+	bool bNextStepQueued = false;
 };
