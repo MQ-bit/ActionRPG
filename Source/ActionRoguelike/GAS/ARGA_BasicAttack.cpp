@@ -55,6 +55,7 @@ void UARGA_BasicAttack::PlayStep(int32 StepIndex)
 	ComboIndex = StepIndex;
 	bComboWindowOpen = false;
 	bNextStepQueued = false;
+	bStepBlendingOut = false;
 
 	FOnMontageBlendingOutStarted BlendingOut;
 	BlendingOut.BindUObject(this, &UARGA_BasicAttack::OnMontageBlendingOut);
@@ -70,8 +71,18 @@ void UARGA_BasicAttack::InputPressed(const FGameplayAbilitySpecHandle Handle, co
 {
 	Super::InputPressed(Handle, ActorInfo, ActivationInfo);
 
-	// One queued step at most, and only after the current step's hit frame.
-	if (bComboWindowOpen && ComboMontages.IsValidIndex(ComboIndex + 1))
+	// Only after the current step's hit frame, and only if there is a next step.
+	if (!bComboWindowOpen || !ComboMontages.IsValidIndex(ComboIndex + 1))
+	{
+		return;
+	}
+
+	if (bStepBlendingOut)
+	{
+		// The queue point (blend-out start) has passed; chain right away instead of dropping the press.
+		PlayStep(ComboIndex + 1);
+	}
+	else
 	{
 		bNextStepQueued = true;
 	}
@@ -105,6 +116,10 @@ void UARGA_BasicAttack::OnMontageBlendingOut(UAnimMontage* Montage, bool bInterr
 	if (bNextStepQueued)
 	{
 		PlayStep(ComboIndex + 1);
+	}
+	else
+	{
+		bStepBlendingOut = true;
 	}
 }
 

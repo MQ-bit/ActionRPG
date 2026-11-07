@@ -31,6 +31,10 @@ protected:
 	/** Forwards the attack input to the ASC by tag; the ability itself lives in UARGA_BasicAttack. */
 	void OnAttackInput();
 
+	/** Console command `ARAttack`: same path as the attack input, for testing without a mouse. */
+	UFUNCTION(Exec)
+	void ARAttack();
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;
 

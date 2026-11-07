@@ -102,3 +102,8 @@ void AARPlayerCharacter::OnAttackInput()
 {
 	AbilitySystemComponent->AbilityInputTagPressed(TAG_InputTag_Attack.GetTag());
 }
+
+void AARPlayerCharacter::ARAttack()
+{
+	OnAttackInput();
+}

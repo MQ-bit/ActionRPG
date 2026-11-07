@@ -70,4 +70,6 @@ private:
 	int32 ComboIndex = 0;
 	bool bComboWindowOpen = false;
 	bool bNextStepQueued = false;
+	/** The current montage already started blending out without a queued step; a late press starts the next step directly. */
+	bool bStepBlendingOut = false;
 };
