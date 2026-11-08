@@ -34,6 +34,9 @@ public:
 
 	bool IsDead() const { return bDead; }
 
+	/** Read access for UI (see UARHealthBarWidget). Change attributes only through Gameplay Effects. */
+	UARAttributeSet* GetAttributeSet() const { return AttributeSet; }
+
 	/** Broadcast once, when Health reaches 0. */
 	FAROnCharacterDied OnDied;
 
