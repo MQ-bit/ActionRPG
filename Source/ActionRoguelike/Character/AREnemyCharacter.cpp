@@ -4,7 +4,9 @@
 
 #include "AI/AREnemyAIController.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "UI/ARHealthBarWidget.h"
 
 AAREnemyCharacter::AAREnemyCharacter()
 {
@@ -22,10 +24,30 @@ AAREnemyCharacter::AAREnemyCharacter()
 	GetCharacterMovement()->bUseControllerDesiredRotation = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 360.f, 0.f);
 	GetCharacterMovement()->MaxWalkSpeed = 300.f;
+
+	HealthBarComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBar"));
+	HealthBarComponent->SetupAttachment(RootComponent);
+	HealthBarComponent->SetRelativeLocation(FVector(0.f, 0.f, 120.f));
+	HealthBarComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	HealthBarComponent->SetDrawSize(FVector2D(100.f, 10.f));
+}
+
+void AAREnemyCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// The widget exists only if the Blueprint set a widget class on the component.
+	HealthBarComponent->InitWidget();
+	if (UARHealthBarWidget* HealthBar = Cast<UARHealthBarWidget>(HealthBarComponent->GetUserWidgetObject()))
+	{
+		HealthBar->BindToCharacter(this);
+	}
 }
 
 void AAREnemyCharacter::OnDeath()
 {
+	HealthBarComponent->SetVisibility(false);
+
 	if (DeathLifeSpan > 0.f)
 	{
 		SetLifeSpan(DeathLifeSpan);

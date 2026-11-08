@@ -2,6 +2,7 @@
 
 #include "Character/ARPlayerCharacter.h"
 
+#include "Blueprint/UserWidget.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "EnhancedInputComponent.h"
@@ -12,6 +13,7 @@
 #include "GAS/ARAbilitySystemComponent.h"
 #include "GAS/ARGameplayTags.h"
 #include "InputActionValue.h"
+#include "UI/ARHealthBarWidget.h"
 
 AARPlayerCharacter::AARPlayerCharacter()
 {
@@ -38,10 +40,20 @@ void AARPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	const APlayerController* PC = Cast<APlayerController>(GetController());
+	APlayerController* PC = Cast<APlayerController>(GetController());
 	if (!PC)
 	{
 		return;
+	}
+
+	// shortcut: the pawn creates its HUD; move this to the player controller if a respawn keeps the controller.
+	if (HealthBarWidgetClass && PC->IsLocalController())
+	{
+		if (UARHealthBarWidget* HealthBar = CreateWidget<UARHealthBarWidget>(PC, HealthBarWidgetClass))
+		{
+			HealthBar->BindToCharacter(this);
+			HealthBar->AddToViewport();
+		}
 	}
 
 	if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())

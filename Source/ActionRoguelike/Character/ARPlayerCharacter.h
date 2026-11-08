@@ -10,6 +10,7 @@ class UCameraComponent;
 class USpringArmComponent;
 class UInputAction;
 class UInputMappingContext;
+class UARHealthBarWidget;
 struct FInputActionValue;
 
 /** Third-person player: camera boom, Enhanced Input move/look. Assets are assigned in a data-only Blueprint. */
@@ -52,4 +53,8 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputAction> AttackAction;
+
+	/** Player HUD health bar, shown for the local player. Optional. Set in the character's data-only Blueprint. */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UARHealthBarWidget> HealthBarWidgetClass;
 };
