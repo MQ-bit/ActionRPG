@@ -137,9 +137,21 @@ bool UARGA_Parkour::Probe(const FGameplayAbilityActorInfo* ActorInfo, FProbeResu
 	Obstacle.Thickness = MaxThicknessProbe;
 	{
 		const float ProbeZ = TopZ - 5.f;
-		const FVector Far = Inside + Forward * MaxThicknessProbe;
+
+		// Start just past this obstacle's own bounds, so another obstacle close behind it is not taken for part of it.
+		const FBox Bounds = Wall.GetComponent()->Bounds.GetBox();
+		float FarDistance = 0.f;
+		for (int32 Corner = 0; Corner < 8; ++Corner)
+		{
+			const FVector P((Corner & 1) ? Bounds.Max.X : Bounds.Min.X, (Corner & 2) ? Bounds.Max.Y : Bounds.Min.Y, (Corner & 4) ? Bounds.Max.Z : Bounds.Min.Z);
+			FarDistance = FMath::Max(FarDistance, FVector::DotProduct(P - Inside, Forward));
+		}
+		FarDistance += 5.f;
+
+		const FVector Far = Inside + Forward * FarDistance;
 		FHitResult Back;
-		if (Trace(Back, FVector(Far.X, Far.Y, ProbeZ), FVector(Inside.X, Inside.Y, ProbeZ))
+		if (FarDistance <= MaxThicknessProbe
+			&& Trace(Back, FVector(Far.X, Far.Y, ProbeZ), FVector(Inside.X, Inside.Y, ProbeZ))
 			&& !Back.bStartPenetrating && Back.GetComponent() == Wall.GetComponent()
 			// A sloped top can be hit instead of the back face; only a near-vertical face pointing away counts.
 			&& FMath::Abs(Back.ImpactNormal.Z) <= 0.5f && FVector::DotProduct(Back.ImpactNormal, Forward) > 0.f)

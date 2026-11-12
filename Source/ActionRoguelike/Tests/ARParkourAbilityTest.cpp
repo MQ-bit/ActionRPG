@@ -146,6 +146,18 @@ bool FARParkourAbilityRejectTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourAbilityNeighbourTest, "ActionRoguelike.Parkour.Ability.VaultWithObstacleBehind", AR_TEST_FLAGS)
+bool FARParkourAbilityNeighbourTest::RunTest(const FString& Parameters)
+{
+	// Found in PIE: the back-face trace started 400 cm behind the wall, inside the next obstacle, and every wall
+	// with another obstacle within 400 cm behind it was treated as thick. Wall x 100..160, ledge face 150 cm behind it.
+	FARParkourFixture F;
+	if (!F.Init(*this, 90.f, 60.f)) { return false; }
+	F.AddBox(FVector(460.f, 0.f, 100.f), FVector(150.f, 300.f, 100.f));
+	TestTrue(TEXT("a 60 cm wall with a ledge 150 cm behind it can be vaulted"), F.TryParkour());
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourAbilityGapTest, "ActionRoguelike.Parkour.Ability.NoVaultOverGap", AR_TEST_FLAGS)
 bool FARParkourAbilityGapTest::RunTest(const FString& Parameters)
 {
