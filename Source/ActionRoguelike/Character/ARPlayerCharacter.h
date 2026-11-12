@@ -32,6 +32,9 @@ protected:
 	/** Forwards the attack input to the ASC by tag; the ability itself lives in UARGA_BasicAttack. */
 	void OnAttackInput();
 
+	/** Press: parkour if an obstacle is in reach, else a jump. Release stops the jump. Ignored while attacking or vaulting. */
+	void OnJumpInput();
+
 	/** Console command `ARAttack`: same path as the attack input, for testing without a mouse. */
 	UFUNCTION(Exec)
 	void ARAttack();
@@ -53,6 +56,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputAction> AttackAction;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TObjectPtr<UInputAction> JumpAction;
 
 	/** Player HUD health bar, shown for the local player. Optional. Set in the character's data-only Blueprint. */
 	UPROPERTY(EditDefaultsOnly, Category = "UI")

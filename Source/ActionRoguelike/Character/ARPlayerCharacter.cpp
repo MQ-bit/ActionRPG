@@ -86,13 +86,19 @@ void AARPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		{
 			EIC->BindAction(AttackAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnAttackInput);
 		}
+		if (JumpAction)
+		{
+			EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnJumpInput);
+			EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+		}
 	}
 }
 
 void AARPlayerCharacter::Move(const FInputActionValue& Value)
 {
 	// The attack montage animates the whole body, so moving during it looks like sliding.
-	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag()))
+	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag())
+		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag()))
 	{
 		return;
 	}
@@ -115,6 +121,22 @@ void AARPlayerCharacter::Look(const FInputActionValue& Value)
 void AARPlayerCharacter::OnAttackInput()
 {
 	AbilitySystemComponent->AbilityInputTagPressed(TAG_InputTag_Attack.GetTag());
+}
+
+void AARPlayerCharacter::OnJumpInput()
+{
+	// The attack montage animates the whole body; a jump would cut it. A running vault or mantle is not interrupted either.
+	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag())
+		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag()))
+	{
+		return;
+	}
+
+	// An obstacle in reach means parkour; otherwise it is a plain jump.
+	if (!AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(TAG_Ability_Parkour.GetTag())))
+	{
+		Jump();
+	}
 }
 
 void AARPlayerCharacter::ARAttack()

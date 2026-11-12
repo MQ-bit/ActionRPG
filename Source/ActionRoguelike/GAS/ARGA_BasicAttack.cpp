@@ -23,6 +23,8 @@ UARGA_BasicAttack::UARGA_BasicAttack()
 	SetAssetTags(FGameplayTagContainer(TAG_Ability_Attack.GetTag()));
 	// Granted to the owner while the ability is active; the character reads it to block movement.
 	ActivationOwnedTags.AddTag(TAG_State_Attacking.GetTag());
+	// No attacking in the middle of a vault or mantle.
+	ActivationBlockedTags.AddTag(TAG_State_Parkouring.GetTag());
 }
 
 void UARGA_BasicAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,

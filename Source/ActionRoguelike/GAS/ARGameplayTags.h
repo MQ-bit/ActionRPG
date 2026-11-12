@@ -6,7 +6,9 @@
 
 /** Central definition of native Gameplay Tags. Do not use tag string literals elsewhere. */
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Attack);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Parkour);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_State_Attacking);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_State_Parkouring);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_State_Dead);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_InputTag_Attack);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Event_Attack_Hit);
