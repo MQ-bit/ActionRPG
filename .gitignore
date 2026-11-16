@@ -26,5 +26,8 @@ Plugins/*/Intermediate/
 # Course assets that may not be redistributable (add specific paths here)
 # Content/CourseAssets/
 
+# Fab Game Animation Sample clips: not for standalone redistribution, kept local
+/Content/Animations/Parkour/
+
 # VS 2026 solution format
 *.slnx
