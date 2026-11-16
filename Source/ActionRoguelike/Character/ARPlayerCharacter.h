@@ -10,6 +10,7 @@ class UCameraComponent;
 class USpringArmComponent;
 class UInputAction;
 class UInputMappingContext;
+class UMotionWarpingComponent;
 class UARHealthBarWidget;
 struct FInputActionValue;
 
@@ -44,6 +45,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<UCameraComponent> FollowCamera;
+
+	/** Lets parkour montages with root motion land exactly on the obstacle (target set by UARGA_Parkour). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Parkour")
+	TObjectPtr<UMotionWarpingComponent> MotionWarping;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;

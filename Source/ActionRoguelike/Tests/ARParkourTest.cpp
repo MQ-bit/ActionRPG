@@ -74,4 +74,43 @@ bool FARParkourRejectTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourPickClipTest, "ActionRoguelike.Parkour.PickClip", AR_TEST_FLAGS)
+bool FARParkourPickClipTest::RunTest(const FString& Parameters)
+{
+	using namespace ARParkour;
+	const TArray<FClipRule> Rules = {
+		{EMove::Vault, 50.f, 120.f, EVariant::Stand},   // 0
+		{EMove::Vault, 50.f, 120.f, EVariant::Run},     // 1
+		{EMove::Mantle, 120.f, 170.f, EVariant::Stand}, // 2
+		{EMove::Mantle, 120.f, 170.f, EVariant::Run},   // 3
+		{EMove::Mantle, 170.f, 240.f, EVariant::Walk},  // 4
+	};
+
+	TestEqual(TEXT("vault, run: the run clip"), PickClip(Rules, EMove::Vault, 90.f, EVariant::Run), 1);
+	TestEqual(TEXT("vault, stand: the stand clip"), PickClip(Rules, EMove::Vault, 90.f, EVariant::Stand), 0);
+	TestEqual(TEXT("vault, walk: no walk clip, the first of the two nearest wins"), PickClip(Rules, EMove::Vault, 90.f, EVariant::Walk), 0);
+	TestEqual(TEXT("low mantle, run"), PickClip(Rules, EMove::Mantle, 150.f, EVariant::Run), 3);
+	TestEqual(TEXT("high mantle has only a walk clip, so run uses it"), PickClip(Rules, EMove::Mantle, 200.f, EVariant::Run), 4);
+
+	TestEqual(TEXT("height 120 is still a vault"), PickClip(Rules, EMove::Vault, 120.f, EVariant::Stand), 0);
+	TestEqual(TEXT("height 130 has no vault clip"), PickClip(Rules, EMove::Vault, 130.f, EVariant::Stand), static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("height 170 belongs to both mantle ranges, the better variant wins"), PickClip(Rules, EMove::Mantle, 170.f, EVariant::Stand), 2);
+	TestEqual(TEXT("height 241 has no clip"), PickClip(Rules, EMove::Mantle, 241.f, EVariant::Stand), static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("no move, no clip"), PickClip(Rules, EMove::None, 90.f, EVariant::Stand), static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("empty table"), PickClip(TArray<FClipRule>(), EMove::Vault, 90.f, EVariant::Stand), static_cast<int32>(INDEX_NONE));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourVariantTest, "ActionRoguelike.Parkour.VariantForSpeed", AR_TEST_FLAGS)
+bool FARParkourVariantTest::RunTest(const FString& Parameters)
+{
+	using namespace ARParkour;
+	TestTrue(TEXT("0 is stand"), VariantForSpeed(0.f) == EVariant::Stand);
+	TestTrue(TEXT("49.9 is stand"), VariantForSpeed(49.9f) == EVariant::Stand);
+	TestTrue(TEXT("50 is walk"), VariantForSpeed(50.f) == EVariant::Walk);
+	TestTrue(TEXT("299 is walk"), VariantForSpeed(299.f) == EVariant::Walk);
+	TestTrue(TEXT("300 is run"), VariantForSpeed(300.f) == EVariant::Run);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -14,6 +14,37 @@ namespace ARParkour
 		Mantle,
 	};
 
+	/** How fast the character is moving when the move starts; picks the matching clip. */
+	enum class EVariant : uint8
+	{
+		Stand,
+		Walk,
+		Run,
+	};
+
+	constexpr float StandMaxSpeed = 50.f;
+	constexpr float WalkMaxSpeed = 300.f;
+
+	inline EVariant VariantForSpeed(float Speed)
+	{
+		return Speed < StandMaxSpeed ? EVariant::Stand : (Speed < WalkMaxSpeed ? EVariant::Walk : EVariant::Run);
+	}
+
+	/** Warp target name the montage's Motion Warping notify state refers to. */
+	inline FName WarpTargetName()
+	{
+		return FName(TEXT("ParkourTarget"));
+	}
+
+	/** One entry of the clip table, without the asset: which move, which obstacle heights, which speed. */
+	struct FClipRule
+	{
+		EMove Move = EMove::None;
+		float MinHeight = 0.f;
+		float MaxHeight = 0.f;
+		EVariant Variant = EVariant::Stand;
+	};
+
 	/** What the forward trace found. Heights are measured from the character's feet. */
 	struct FObstacle
 	{
@@ -56,5 +87,27 @@ namespace ARParkour
 		}
 
 		return EMove::None;
+	}
+
+	/** Index of the rule for this move and height whose variant is closest to the wanted one (first wins a tie), or INDEX_NONE. */
+	inline int32 PickClip(const TArray<FClipRule>& Rules, EMove Move, float Height, EVariant Variant)
+	{
+		int32 Best = INDEX_NONE;
+		int32 BestDistance = MAX_int32;
+		for (int32 Index = 0; Index < Rules.Num(); ++Index)
+		{
+			const FClipRule& Rule = Rules[Index];
+			if (Rule.Move != Move || Height < Rule.MinHeight || Height > Rule.MaxHeight)
+			{
+				continue;
+			}
+			const int32 Distance = FMath::Abs(static_cast<int32>(Rule.Variant) - static_cast<int32>(Variant));
+			if (Distance < BestDistance)
+			{
+				Best = Index;
+				BestDistance = Distance;
+			}
+		}
+		return Best;
 	}
 }

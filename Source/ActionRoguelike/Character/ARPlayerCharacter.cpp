@@ -13,6 +13,7 @@
 #include "GAS/ARAbilitySystemComponent.h"
 #include "GAS/ARGameplayTags.h"
 #include "InputActionValue.h"
+#include "MotionWarpingComponent.h"
 #include "UI/ARHealthBarWidget.h"
 
 AARPlayerCharacter::AARPlayerCharacter()
@@ -34,6 +35,8 @@ AARPlayerCharacter::AARPlayerCharacter()
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
+
+	MotionWarping = CreateDefaultSubobject<UMotionWarpingComponent>(TEXT("MotionWarping"));
 }
 
 void AARPlayerCharacter::BeginPlay()

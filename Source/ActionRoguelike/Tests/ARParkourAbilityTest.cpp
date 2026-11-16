@@ -106,6 +106,47 @@ namespace
 	};
 }
 
+namespace
+{
+	/** Sets the ability's clip table for the duration of a test (the granted instance copies the class defaults). */
+	struct FARClipTableGuard
+	{
+		TArray<FARParkourClip> Saved;
+
+		explicit FARClipTableGuard(const TArray<FARParkourClip>& NewClips)
+		{
+			UARGA_Parkour* Defaults = GetMutableDefault<UARGA_Parkour>();
+			Saved = Defaults->Clips;
+			Defaults->Clips = NewClips;
+		}
+
+		~FARClipTableGuard() { GetMutableDefault<UARGA_Parkour>()->Clips = Saved; }
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourAbilityClipFallbackTest, "ActionRoguelike.Parkour.Ability.ClipsWithoutMontageSupportFallBack", AR_TEST_FLAGS)
+bool FARParkourAbilityClipFallbackTest::RunTest(const FString& Parameters)
+{
+	// A table is configured, but this character has no Motion Warping component and no animation instance (and the clip has
+	// no montage asset): the ability must still move the character with the interpolated move.
+	FARParkourClip Clip;
+	Clip.Move = EARParkourMoveKind::Vault;
+	Clip.MinHeight = 50.f;
+	Clip.MaxHeight = 120.f;
+	Clip.Variant = EARParkourVariant::Stand;
+	const FARClipTableGuard Guard({Clip});
+
+	FARParkourFixture F;
+	if (!F.Init(*this, 90.f, 100.f)) { return false; }
+	TestTrue(TEXT("vault starts with a clip table but no way to play it"), F.TryParkour());
+	const int32 Overlaps = F.TickUntilDone();
+	TestEqual(TEXT("the capsule never overlaps geometry on the way"), Overlaps, 0);
+	TestFalse(TEXT("State.Parkouring is removed at the end"), F.Parkouring());
+	TestEqual(TEXT("it arrives behind the wall"), F.Actor->GetActorLocation().X, 247.0, 5.0);
+	TestTrue(TEXT("walking again"), F.Actor->GetCharacterMovement()->MovementMode == MOVE_Walking);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourAbilityVaultTest, "ActionRoguelike.Parkour.Ability.VaultAndMantle", AR_TEST_FLAGS)
 bool FARParkourAbilityVaultTest::RunTest(const FString& Parameters)
 {

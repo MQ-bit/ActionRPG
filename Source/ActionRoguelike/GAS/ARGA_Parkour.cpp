@@ -3,7 +3,11 @@
 #include "GAS/ARGA_Parkour.h"
 
 #include "ActionRoguelike.h"
+#include "AbilitySystemComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Components/CapsuleComponent.h"
+#include "MotionWarpingComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -50,11 +54,192 @@ void UARGA_Parkour::ActivateAbility(const FGameplayAbilitySpecHandle Handle, con
 	AActor* Avatar = GetAvatarActorFromActorInfo();
 	Avatar->SetActorRotation(Result.Facing);
 
+	if (!TryStartMontage(Result))
+	{
+		StartInterpolatedMove(Result);
+	}
+}
+
+void UARGA_Parkour::StartInterpolatedMove(const FProbeResult& Result)
+{
 	const float Duration = Result.Move == ARParkour::EMove::Vault ? VaultDuration : MantleDuration;
 	UARAbilityTask_ParkourMove* Move = UARAbilityTask_ParkourMove::ParkourMove(this, Result.Target, Result.ApexZ, Duration);
 	Move->OnFinished.AddDynamic(this, &UARGA_Parkour::OnMoveFinished);
 	Move->OnBlocked.AddDynamic(this, &UARGA_Parkour::OnMoveBlocked);
 	Move->ReadyForActivation();
+}
+
+bool UARGA_Parkour::TryStartMontage(const FProbeResult& Result)
+{
+	ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+	UMotionWarpingComponent* Warp = Character ? Character->FindComponentByClass<UMotionWarpingComponent>() : nullptr;
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+	UAnimInstance* AnimInstance = CurrentActorInfo ? CurrentActorInfo->GetAnimInstance() : nullptr;
+	if (Clips.IsEmpty() || !Warp || !ASC || !AnimInstance)
+	{
+		return false;
+	}
+
+	TArray<ARParkour::FClipRule> Rules;
+	Rules.Reserve(Clips.Num());
+	for (const FARParkourClip& Clip : Clips)
+	{
+		Rules.Add({Clip.Move == EARParkourMoveKind::Mantle ? ARParkour::EMove::Mantle : ARParkour::EMove::Vault,
+			Clip.MinHeight, Clip.MaxHeight, static_cast<ARParkour::EVariant>(Clip.Variant)});
+	}
+	const int32 Index = ARParkour::PickClip(Rules, Result.Move, Result.Height, ARParkour::VariantForSpeed(Character->GetVelocity().Size2D()));
+	UAnimMontage* Montage = Index != INDEX_NONE ? Clips[Index].Montage.LoadSynchronous() : nullptr;
+	if (!Montage)
+	{
+		return false;
+	}
+
+	// The warp target is where the feet end up (the warp notify warps to the feet location).
+	Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::WarpTargetName(), Result.Target - FVector(0.f, 0.f, Result.HalfHeight), Result.Facing);
+	if (ASC->PlayMontage(this, CurrentActivationInfo, Montage, 1.f, NAME_None, Clips[Index].StartPosition) <= 0.f)
+	{
+		// Could not start: nothing else has been touched yet, so the interpolated move can take over.
+		Warp->RemoveWarpTarget(ARParkour::WarpTargetName());
+		return false;
+	}
+
+	bMontageMove = true;
+	MontageTarget = Result.Target;
+	SafeLocation = Character->GetActorLocation();
+	IgnoredObstacle = Result.Obstacle;
+	WarpComponent = Warp;
+
+	// Root motion moves the capsule: no gravity, and the obstacle must not block the sweep while it passes over or along it.
+	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+	Movement->StopMovementImmediately();
+	Movement->SetMovementMode(MOVE_Flying);
+	if (AActor* Obstacle = IgnoredObstacle.Get())
+	{
+		Character->GetCapsuleComponent()->IgnoreActorWhenMoving(Obstacle, true);
+	}
+
+	FOnMontageEnded Ended;
+	Ended.BindUObject(this, &UARGA_Parkour::OnMontageEnded, ++MontagePlaybackId);
+	AnimInstance->Montage_SetEndDelegate(Ended, Montage);
+
+	Character->GetWorld()->GetTimerManager().SetTimer(SafeLocationTimer, this, &UARGA_Parkour::SampleSafeLocation, 1.f / 30.f, true);
+	return true;
+}
+
+void UARGA_Parkour::OnMontageEnded(UAnimMontage* /*Montage*/, bool bInterrupted, int32 PlaybackId)
+{
+	if (!bMontageMove || PlaybackId != MontagePlaybackId || !IsActive())
+	{
+		return;
+	}
+
+	if (bInterrupted)
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+
+	// The end event comes from the pose update, before the movement update applies that tick's root motion. Check the
+	// arrival and clean up on the next tick, when the capsule has taken the last of the warped motion.
+	const AActor* Avatar = GetAvatarActorFromActorInfo();
+	if (UWorld* World = Avatar ? Avatar->GetWorld() : nullptr)
+	{
+		World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this, PlaybackId]()
+		{
+			FinishMontageMove(PlaybackId);
+		}));
+	}
+}
+
+void UARGA_Parkour::FinishMontageMove(int32 PlaybackId)
+{
+	if (!bMontageMove || PlaybackId != MontagePlaybackId || !IsActive())
+	{
+		return;
+	}
+
+	// A finished montage is not an arrival: the capsule may have slid along something. Check where it really is.
+	const AActor* Avatar = GetAvatarActorFromActorInfo();
+	const bool bArrived = Avatar && FVector::Dist(Avatar->GetActorLocation(), MontageTarget) <= ArrivalTolerance
+		&& !CapsuleBlockedAt(Avatar->GetActorLocation());
+	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, !bArrived);
+}
+
+void UARGA_Parkour::SampleSafeLocation()
+{
+	const AActor* Avatar = GetAvatarActorFromActorInfo();
+	if (bMontageMove && Avatar && !CapsuleBlockedAt(Avatar->GetActorLocation()))
+	{
+		SafeLocation = Avatar->GetActorLocation();
+	}
+}
+
+bool UARGA_Parkour::CapsuleBlockedAt(const FVector& Location) const
+{
+	const ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+	if (!Character || !Character->GetWorld())
+	{
+		return false;
+	}
+	const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(ARParkourSafe), false, Character);
+	return Character->GetWorld()->OverlapBlockingTestByChannel(Location, FQuat::Identity, ECC_Pawn,
+		FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight()), Params);
+}
+
+void UARGA_Parkour::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
+{
+	CleanUpMontageMove(!bWasCancelled);
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+}
+
+void UARGA_Parkour::CleanUpMontageMove(bool bArrived)
+{
+	if (!bMontageMove)
+	{
+		return;
+	}
+	bMontageMove = false;
+	++MontagePlaybackId; // montage callbacks still queued from this move must not touch a later one
+
+	ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+	if (!Character)
+	{
+		return;
+	}
+	if (UWorld* World = Character->GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(SafeLocationTimer);
+	}
+
+	// Cut short: stop the montage first so no root motion is left to move the capsule, then leave any geometry it is inside.
+	if (!bArrived)
+	{
+		if (UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo())
+		{
+			ASC->CurrentMontageStop(0.f);
+		}
+		if (CapsuleBlockedAt(Character->GetActorLocation()))
+		{
+			Character->SetActorLocation(SafeLocation, false, nullptr, ETeleportType::TeleportPhysics);
+		}
+	}
+
+	if (AActor* Obstacle = IgnoredObstacle.Get())
+	{
+		Character->GetCapsuleComponent()->IgnoreActorWhenMoving(Obstacle, false);
+	}
+	IgnoredObstacle.Reset();
+	if (UMotionWarpingComponent* Warp = WarpComponent.Get())
+	{
+		Warp->RemoveWarpTarget(ARParkour::WarpTargetName());
+	}
+	WarpComponent.Reset();
+
+	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+	Movement->Velocity = FVector::ZeroVector;
+	Movement->SetMovementMode(bArrived ? MOVE_Walking : MOVE_Falling);
 }
 
 void UARGA_Parkour::OnMoveFinished()
@@ -219,6 +404,9 @@ bool UARGA_Parkour::Probe(const FGameplayAbilityActorInfo* ActorInfo, FProbeResu
 	Out.Move = Move;
 	Out.Target = Target;
 	Out.ApexZ = ApexZ;
+	Out.Height = Obstacle.Height;
+	Out.HalfHeight = HalfHeight;
+	Out.Obstacle = Wall.GetActor();
 	Out.Facing = FRotator(0.f, (-Wall.ImpactNormal).Rotation().Yaw, 0.f);
 	return true;
 }
