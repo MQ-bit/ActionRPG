@@ -10,6 +10,7 @@
 #include "ARGA_Parkour.generated.h"
 
 class UMotionWarpingComponent;
+class USpringArmComponent;
 
 /**
  * Vault over a low obstacle or mantle onto a ledge in front of the character. CanActivate runs the probe, so the
@@ -72,10 +73,16 @@ protected:
 	/** Remembers the last capsule position that overlapped nothing, as the spot to return to when the montage is cut short. */
 	void SampleSafeLocation();
 
-	bool CapsuleBlockedAt(const FVector& Location) const;
+	/** Inset shrinks the capsule (cm), so touching a surface does not count as overlapping it. */
+	bool CapsuleBlockedAt(const FVector& Location, float Inset = 0.f) const;
 
 	/** Undoes everything TryStartMontage set up. Safe to call twice. */
 	void CleanUpMontageMove(bool bArrived);
+
+	/** Camera boom without collision and with lag for the length of the move; EndCameraOverride restores the old values. */
+	void BeginCameraOverride(AActor* Avatar);
+	void EndCameraOverride();
+	void TryRestoreCameraCollision();
 
 	UFUNCTION()
 	void OnMoveFinished();
@@ -93,9 +100,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Parkour")
 	float DetectDistance = 120.f;
 
-	/** The montage counts as arrived when the capsule ends within this distance of the target (cm). */
+	/** The montage counts as arrived when the capsule ends within this distance of the target (cm); it is then snapped onto it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Montage")
-	float ArrivalTolerance = 15.f;
+	float ArrivalTolerance = 25.f;
+
+	/** The arrival overlap test uses a capsule this much smaller (cm). */
+	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Montage")
+	float ArrivalInset = 4.f;
+
+	/** While parkouring, the camera boom does not collide (it would be pulled into the character by walls) and follows with this lag. */
+	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Camera", meta = (ClampMin = "0"))
+	float CameraLagSpeed = 12.f;
 
 private:
 	bool bMontageMove = false;
@@ -105,4 +120,14 @@ private:
 	TWeakObjectPtr<AActor> IgnoredObstacle;
 	TWeakObjectPtr<UMotionWarpingComponent> WarpComponent;
 	FTimerHandle SafeLocationTimer;
+
+	/** The collision test is switched back on after this long at the latest, if the camera's spot never clears (s). */
+	static constexpr float MaxCameraRestoreSeconds = 10.f;
+
+	FTimerHandle CameraRestoreTimer;
+	float CameraRestoreElapsed = 0.f;
+	TWeakObjectPtr<USpringArmComponent> OverriddenBoom;
+	bool bSavedCollisionTest = true;
+	bool bSavedCameraLag = false;
+	float SavedLagSpeed = 10.f;
 };

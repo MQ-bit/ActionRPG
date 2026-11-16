@@ -36,6 +36,10 @@ protected:
 	/** Press: parkour if an obstacle is in reach, else a jump. Release stops the jump. Ignored while attacking or vaulting. */
 	void OnJumpInput();
 
+	/** Console command `ARCancelAbilities`: cancels every running ability, for testing cancel paths (parkour) without a death. */
+	UFUNCTION(Exec)
+	void ARCancelAbilities();
+
 	/** Console command `ARAttack`: same path as the attack input, for testing without a mouse. */
 	UFUNCTION(Exec)
 	void ARAttack();

@@ -11,6 +11,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "GAS/ARAbilityTask_ParkourMove.h"
 #include "GAS/ARGameplayTags.h"
 
@@ -53,6 +54,7 @@ void UARGA_Parkour::ActivateAbility(const FGameplayAbilitySpecHandle Handle, con
 
 	AActor* Avatar = GetAvatarActorFromActorInfo();
 	Avatar->SetActorRotation(Result.Facing);
+	BeginCameraOverride(Avatar);
 
 	if (!TryStartMontage(Result))
 	{
@@ -160,8 +162,19 @@ void UARGA_Parkour::FinishMontageMove(int32 PlaybackId)
 
 	// A finished montage is not an arrival: the capsule may have slid along something. Check where it really is.
 	const AActor* Avatar = GetAvatarActorFromActorInfo();
-	const bool bArrived = Avatar && FVector::Dist(Avatar->GetActorLocation(), MontageTarget) <= ArrivalTolerance
-		&& !CapsuleBlockedAt(Avatar->GetActorLocation());
+	// The warp leaves a few cm of error (the blend-out weakens the last root motion) and the capsule may touch the surface it
+	// stands on, so the overlap test uses a slightly smaller capsule. An arrival is snapped onto the target, which the probe
+	// has already checked to be free.
+	const float Distance = Avatar ? FVector::Dist(Avatar->GetActorLocation(), MontageTarget) : -1.f;
+	// The target was free when the move started; something may have moved in since, so check it again with the full capsule.
+	const bool bArrived = Avatar && Distance <= ArrivalTolerance && !CapsuleBlockedAt(Avatar->GetActorLocation(), ArrivalInset)
+		&& !CapsuleBlockedAt(MontageTarget);
+	UE_LOG(LogAR, Verbose, TEXT("[Parkour] %s: montage ended %.1f cm from the target -> %s"),
+		*GetNameSafe(Avatar), Distance, bArrived ? TEXT("arrived") : TEXT("not arrived"));
+	if (bArrived)
+	{
+		GetAvatarActorFromActorInfo()->SetActorLocation(MontageTarget, false, nullptr, ETeleportType::TeleportPhysics);
+	}
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, !bArrived);
 }
 
@@ -174,7 +187,7 @@ void UARGA_Parkour::SampleSafeLocation()
 	}
 }
 
-bool UARGA_Parkour::CapsuleBlockedAt(const FVector& Location) const
+bool UARGA_Parkour::CapsuleBlockedAt(const FVector& Location, float Inset) const
 {
 	const ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
 	if (!Character || !Character->GetWorld())
@@ -184,7 +197,7 @@ bool UARGA_Parkour::CapsuleBlockedAt(const FVector& Location) const
 	const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(ARParkourSafe), false, Character);
 	return Character->GetWorld()->OverlapBlockingTestByChannel(Location, FQuat::Identity, ECC_Pawn,
-		FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight()), Params);
+		FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius() - Inset, Capsule->GetScaledCapsuleHalfHeight() - Inset), Params);
 }
 
 void UARGA_Parkour::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
@@ -192,6 +205,76 @@ void UARGA_Parkour::EndAbility(const FGameplayAbilitySpecHandle Handle, const FG
 {
 	CleanUpMontageMove(!bWasCancelled);
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+
+	// After the base class: it clears every timer of this ability, which would delete the camera restore timer set here.
+	EndCameraOverride();
+}
+
+void UARGA_Parkour::BeginCameraOverride(AActor* Avatar)
+{
+	USpringArmComponent* Boom = Avatar ? Avatar->FindComponentByClass<USpringArmComponent>() : nullptr;
+	if (!Boom)
+	{
+		return;
+	}
+	if (!OverriddenBoom.IsValid())
+	{
+		// Not a second move while the collision test is still waiting to come back: keep the original values.
+		OverriddenBoom = Boom;
+		bSavedCollisionTest = Boom->bDoCollisionTest;
+		bSavedCameraLag = Boom->bEnableCameraLag;
+		SavedLagSpeed = Boom->CameraLagSpeed;
+	}
+	Boom->GetWorld()->GetTimerManager().ClearTimer(CameraRestoreTimer);
+
+	Boom->bDoCollisionTest = false;
+	Boom->bEnableCameraLag = true;
+	Boom->CameraLagSpeed = CameraLagSpeed;
+}
+
+void UARGA_Parkour::EndCameraOverride()
+{
+	USpringArmComponent* Boom = OverriddenBoom.Get();
+	if (!Boom)
+	{
+		OverriddenBoom.Reset();
+		return;
+	}
+
+	// The lag was for the move. The collision test comes back once the camera's spot is free of geometry: right after a vault
+	// the player stands just behind the wall and the camera belongs on its other side, so restoring it at once would pull
+	// the camera in to a few cm from the character.
+	Boom->bEnableCameraLag = bSavedCameraLag;
+	Boom->CameraLagSpeed = SavedLagSpeed;
+	CameraRestoreElapsed = 0.f;
+	Boom->GetWorld()->GetTimerManager().SetTimer(CameraRestoreTimer, this, &UARGA_Parkour::TryRestoreCameraCollision, 0.1f, true);
+}
+
+void UARGA_Parkour::TryRestoreCameraCollision()
+{
+	USpringArmComponent* Boom = OverriddenBoom.Get();
+	if (!Boom)
+	{
+		return;
+	}
+	UWorld* World = Boom->GetWorld();
+	CameraRestoreElapsed += 0.1f;
+
+	// Where the boom puts the camera: it follows the control rotation (GetTargetRotation), not the component's own rotation.
+	const FRotator Rotation = Boom->GetTargetRotation();
+	const FVector Pivot = Boom->GetComponentLocation() + Boom->TargetOffset;
+	const FVector Desired = Pivot - Rotation.Vector() * Boom->TargetArmLength + Rotation.RotateVector(Boom->SocketOffset);
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(ARParkourCamera), false, Boom->GetOwner());
+	const bool bBlocked = World->SweepSingleByChannel(Hit, Pivot, Desired, FQuat::Identity, Boom->ProbeChannel,
+		FCollisionShape::MakeSphere(Boom->ProbeSize), Params);
+	if (!bBlocked || CameraRestoreElapsed >= MaxCameraRestoreSeconds)
+	{
+		UE_LOG(LogAR, Verbose, TEXT("[Parkour] camera collision restored after %.1f s (%s)"), CameraRestoreElapsed, bBlocked ? TEXT("time limit") : TEXT("path clear"));
+		Boom->bDoCollisionTest = bSavedCollisionTest;
+		OverriddenBoom.Reset();
+		World->GetTimerManager().ClearTimer(CameraRestoreTimer);
+	}
 }
 
 void UARGA_Parkour::CleanUpMontageMove(bool bArrived)
