@@ -89,6 +89,35 @@ namespace ARParkour
 		return EMove::None;
 	}
 
+	/** Hand IK weight over montage time: 0 before Start - Ramp, ramps up to 1 at Start, 1 until End, ramps down to 0 at End + Ramp. */
+	inline float HandWeight(float Time, float Start, float End, float Ramp)
+	{
+		if (End <= Start)
+		{
+			return 0.f; // no window for this hand
+		}
+		if (Time >= Start && Time <= End)
+		{
+			return 1.f;
+		}
+		if (Ramp <= KINDA_SMALL_NUMBER)
+		{
+			return 0.f;
+		}
+		if (Time < Start)
+		{
+			return FMath::Clamp((Time - (Start - Ramp)) / Ramp, 0.f, 1.f);
+		}
+		return FMath::Clamp(1.f - (Time - End) / Ramp, 0.f, 1.f);
+	}
+
+	/** Where a hand goes on the ledge: on the front top edge, InwardCm onto the top, LateralCm to the side (Side -1 left, +1 right of the move direction). */
+	inline FVector HandCandidate(const FVector& FrontEdgePoint, const FVector& Inward, int32 Side, float LateralCm, float InwardCm)
+	{
+		const FVector Right = FVector::CrossProduct(FVector::UpVector, Inward.GetSafeNormal2D()); // UE is left-handed: Up x Forward = Right
+		return FrontEdgePoint + Inward.GetSafeNormal2D() * InwardCm + Right * (static_cast<float>(Side) * LateralCm);
+	}
+
 	/** Index of the rule for this move and height whose variant is closest to the wanted one (first wins a tie), or INDEX_NONE. */
 	inline int32 PickClip(const TArray<FClipRule>& Rules, EMove Move, float Height, EVariant Variant)
 	{

@@ -53,4 +53,23 @@ struct FARParkourClip
 	/** Where in the montage to start (seconds), to skip a long run-in. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour", meta = (ClampMin = "0"))
 	float StartPosition = 0.f;
+
+	/**
+	 * Mantle only: when each hand is pulled onto the ledge edge, in montage time (s). Full pull from Start to End, easing in
+	 * and out over HandRamp. End <= Start leaves that hand to the animation.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Hand IK", meta = (ClampMin = "0"))
+	float LeftHandStart = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Hand IK", meta = (ClampMin = "0"))
+	float LeftHandEnd = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Hand IK", meta = (ClampMin = "0"))
+	float RightHandStart = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Hand IK", meta = (ClampMin = "0"))
+	float RightHandEnd = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Hand IK", meta = (ClampMin = "0"))
+	float HandRamp = 0.15f;
 };

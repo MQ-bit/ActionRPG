@@ -10,6 +10,8 @@ class UCameraComponent;
 class USpringArmComponent;
 class UInputAction;
 class UInputMappingContext;
+class UAnimInstance;
+class UARParkourIKComponent;
 class UMotionWarpingComponent;
 class UARHealthBarWidget;
 struct FInputActionValue;
@@ -53,6 +55,14 @@ protected:
 	/** Lets parkour montages with root motion land exactly on the obstacle (target set by UARGA_Parkour). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Parkour")
 	TObjectPtr<UMotionWarpingComponent> MotionWarping;
+
+	/** Post-process anim blueprint with the hand IK (ABP_ParkourIK). Applied to this mesh only, the shared mannequin mesh asset stays untouched. */
+	UPROPERTY(EditDefaultsOnly, Category = "Parkour")
+	TSubclassOf<UAnimInstance> ParkourIKAnimClass;
+
+	/** Hand targets for the mantle hand IK, read by the post-process anim instance. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Parkour")
+	TObjectPtr<UARParkourIKComponent> ParkourIK;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;

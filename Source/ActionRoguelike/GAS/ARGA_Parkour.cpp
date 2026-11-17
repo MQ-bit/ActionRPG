@@ -4,6 +4,7 @@
 
 #include "ActionRoguelike.h"
 #include "AbilitySystemComponent.h"
+#include "Character/ARParkourIKComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Components/CapsuleComponent.h"
@@ -124,6 +125,8 @@ bool UARGA_Parkour::TryStartMontage(const FProbeResult& Result)
 	Ended.BindUObject(this, &UARGA_Parkour::OnMontageEnded, ++MontagePlaybackId);
 	AnimInstance->Montage_SetEndDelegate(Ended, Montage);
 
+	BeginHandIK(Result, Clips[Index], Montage, Character);
+
 	Character->GetWorld()->GetTimerManager().SetTimer(SafeLocationTimer, this, &UARGA_Parkour::SampleSafeLocation, 1.f / 30.f, true);
 	return true;
 }
@@ -208,6 +211,57 @@ void UARGA_Parkour::EndAbility(const FGameplayAbilitySpecHandle Handle, const FG
 
 	// After the base class: it clears every timer of this ability, which would delete the camera restore timer set here.
 	EndCameraOverride();
+}
+
+void UARGA_Parkour::BeginHandIK(const FProbeResult& Result, const FARParkourClip& Clip, UAnimMontage* Montage, ACharacter* Character)
+{
+	UARParkourIKComponent* IK = Character ? Character->FindComponentByClass<UARParkourIKComponent>() : nullptr;
+	UPrimitiveComponent* Top = Result.ObstacleComponent.Get();
+	if (!IK || !Top || Result.Move != ARParkour::EMove::Mantle)
+	{
+		return;
+	}
+
+	const float Windows[2][2] = {{Clip.LeftHandStart, Clip.LeftHandEnd}, {Clip.RightHandStart, Clip.RightHandEnd}};
+	int32 Placed = 0;
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		if (Windows[Side][1] <= Windows[Side][0])
+		{
+			continue;
+		}
+
+		// A hand target must lie on the obstacle's own top surface: found by tracing that component, moved further onto the
+		// top once if it misses (near a corner), and left out if the top is not there.
+		const float InwardTries[2] = {HandInwardCm, HandInwardCm + 20.f};
+		for (const float Inward : InwardTries)
+		{
+			FVector Target = ARParkour::HandCandidate(Result.FrontEdgePoint, Result.Inward, Side == 0 ? -1 : 1, HandLateralCm, Inward);
+			FHitResult Hit;
+			if (Top->LineTraceComponent(Hit, Target + FVector(0.f, 0.f, 30.f), Target - FVector(0.f, 0.f, 30.f), FCollisionQueryParams()) && Hit.ImpactNormal.Z >= 0.7f)
+			{
+				Target.Z = Hit.ImpactPoint.Z;
+				IK->SetHand(Side, Target, Windows[Side][0], Windows[Side][1]);
+				++Placed;
+				break;
+			}
+		}
+	}
+
+	if (Placed > 0)
+	{
+		IK->Begin(Montage, Clip.HandRamp);
+		HandIKComponent = IK;
+	}
+}
+
+void UARGA_Parkour::EndHandIK()
+{
+	if (UARParkourIKComponent* IK = HandIKComponent.Get())
+	{
+		IK->End();
+	}
+	HandIKComponent.Reset();
 }
 
 void UARGA_Parkour::BeginCameraOverride(AActor* Avatar)
@@ -319,6 +373,7 @@ void UARGA_Parkour::CleanUpMontageMove(bool bArrived)
 		Warp->RemoveWarpTarget(ARParkour::WarpTargetName());
 	}
 	WarpComponent.Reset();
+	EndHandIK();
 
 	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
 	Movement->Velocity = FVector::ZeroVector;
@@ -490,6 +545,9 @@ bool UARGA_Parkour::Probe(const FGameplayAbilityActorInfo* ActorInfo, FProbeResu
 	Out.Height = Obstacle.Height;
 	Out.HalfHeight = HalfHeight;
 	Out.Obstacle = Wall.GetActor();
+	Out.FrontEdgePoint = FVector(Wall.ImpactPoint.X, Wall.ImpactPoint.Y, TopZ);
+	Out.Inward = Forward;
+	Out.ObstacleComponent = Wall.GetComponent();
 	Out.Facing = FRotator(0.f, (-Wall.ImpactNormal).Rotation().Yaw, 0.f);
 	return true;
 }

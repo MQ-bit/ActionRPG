@@ -113,4 +113,45 @@ bool FARParkourVariantTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourHandWeightTest, "ActionRoguelike.Parkour.HandIK.Weight", AR_TEST_FLAGS)
+bool FARParkourHandWeightTest::RunTest(const FString& Parameters)
+{
+	using namespace ARParkour;
+	// Window 1.0 .. 1.5 with a 0.2 s ramp on each side.
+	TestEqual(TEXT("long before the window"), HandWeight(0.5f, 1.0f, 1.5f, 0.2f), 0.f);
+	TestEqual(TEXT("ramp starts at Start - Ramp"), HandWeight(0.8f, 1.0f, 1.5f, 0.2f), 0.f);
+	TestEqual(TEXT("halfway up the ramp"), HandWeight(0.9f, 1.0f, 1.5f, 0.2f), 0.5f, 0.001f);
+	TestEqual(TEXT("full at Start"), HandWeight(1.0f, 1.0f, 1.5f, 0.2f), 1.f);
+	TestEqual(TEXT("full inside"), HandWeight(1.25f, 1.0f, 1.5f, 0.2f), 1.f);
+	TestEqual(TEXT("full at End"), HandWeight(1.5f, 1.0f, 1.5f, 0.2f), 1.f);
+	TestEqual(TEXT("halfway down the ramp"), HandWeight(1.6f, 1.0f, 1.5f, 0.2f), 0.5f, 0.001f);
+	TestEqual(TEXT("gone at End + Ramp"), HandWeight(1.7f, 1.0f, 1.5f, 0.2f), 0.f);
+	TestEqual(TEXT("no ramp: a step"), HandWeight(0.99f, 1.0f, 1.5f, 0.f), 0.f);
+	TestEqual(TEXT("no window (End <= Start): the animation keeps the hand"), HandWeight(1.0f, 1.0f, 1.0f, 0.2f), 0.f);
+	TestEqual(TEXT("inverted window"), HandWeight(1.2f, 1.5f, 1.0f, 0.2f), 0.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourHandCandidateTest, "ActionRoguelike.Parkour.HandIK.Candidate", AR_TEST_FLAGS)
+bool FARParkourHandCandidateTest::RunTest(const FString& Parameters)
+{
+	using namespace ARParkour;
+	const FVector Edge(100.f, 0.f, 150.f);
+
+	// Facing +X: right is +Y (UE's X forward, Y right), so side -1 is the left hand at -Y.
+	const FVector Left = HandCandidate(Edge, FVector::ForwardVector, -1, 20.f, 5.f);
+	const FVector Right = HandCandidate(Edge, FVector::ForwardVector, 1, 20.f, 5.f);
+	TestTrue(TEXT("left hand: 5 cm onto the top, 20 cm to the left"), Left.Equals(FVector(105.f, -20.f, 150.f), 0.01f));
+	TestTrue(TEXT("right hand: 5 cm onto the top, 20 cm to the right"), Right.Equals(FVector(105.f, 20.f, 150.f), 0.01f));
+
+	// Facing +Y: right is -X.
+	const FVector RightY = HandCandidate(Edge, FVector::RightVector, 1, 20.f, 5.f);
+	TestTrue(TEXT("rotated wall: the offsets follow the move direction"), RightY.Equals(FVector(80.f, 5.f, 150.f), 0.01f));
+
+	// A tilted direction is flattened: the target stays on the edge height.
+	const FVector Tilted = HandCandidate(Edge, FVector(1.f, 0.f, 0.5f), 1, 20.f, 5.f);
+	TestEqual(TEXT("height is the edge height"), Tilted.Z, 150.0, 0.01);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

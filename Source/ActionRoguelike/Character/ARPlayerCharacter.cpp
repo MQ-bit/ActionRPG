@@ -14,6 +14,7 @@
 #include "GAS/ARGameplayTags.h"
 #include "InputActionValue.h"
 #include "MotionWarpingComponent.h"
+#include "Character/ARParkourIKComponent.h"
 #include "UI/ARHealthBarWidget.h"
 
 AARPlayerCharacter::AARPlayerCharacter()
@@ -37,11 +38,17 @@ AARPlayerCharacter::AARPlayerCharacter()
 	FollowCamera->bUsePawnControlRotation = false;
 
 	MotionWarping = CreateDefaultSubobject<UMotionWarpingComponent>(TEXT("MotionWarping"));
+	ParkourIK = CreateDefaultSubobject<UARParkourIKComponent>(TEXT("ParkourIK"));
 }
 
 void AARPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (ParkourIKAnimClass)
+	{
+		GetMesh()->SetOverridePostProcessAnimBP(ParkourIKAnimClass);
+	}
 
 	APlayerController* PC = Cast<APlayerController>(GetController());
 	if (!PC)

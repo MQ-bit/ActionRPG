@@ -9,7 +9,9 @@
 #include "TimerManager.h"
 #include "ARGA_Parkour.generated.h"
 
+class UARParkourIKComponent;
 class UMotionWarpingComponent;
+class UPrimitiveComponent;
 class USpringArmComponent;
 
 /**
@@ -55,6 +57,10 @@ protected:
 		float Height = 0.f;
 		float HalfHeight = 0.f;
 		TWeakObjectPtr<AActor> Obstacle;
+		/** The obstacle's front top edge at the point the probe hit, the direction into it, and the component that has the top. */
+		FVector FrontEdgePoint = FVector::ZeroVector;
+		FVector Inward = FVector::ForwardVector;
+		TWeakObjectPtr<UPrimitiveComponent> ObstacleComponent;
 	};
 
 	/** Traces in front of the avatar and classifies what it finds. False when there is no move. */
@@ -78,6 +84,10 @@ protected:
 
 	/** Undoes everything TryStartMontage set up. Safe to call twice. */
 	void CleanUpMontageMove(bool bArrived);
+
+	/** Mantle: puts a validated target on the ledge edge for each hand that has a window in the clip (hand IK). */
+	void BeginHandIK(const FProbeResult& Result, const FARParkourClip& Clip, UAnimMontage* Montage, ACharacter* Character);
+	void EndHandIK();
 
 	/** Camera boom without collision and with lag for the length of the move; EndCameraOverride restores the old values. */
 	void BeginCameraOverride(AActor* Avatar);
@@ -108,6 +118,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Montage")
 	float ArrivalInset = 4.f;
 
+	/** A hand target lies on the ledge edge, this far onto the top and to the side of the body centre line (cm). */
+	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Hand IK")
+	float HandInwardCm = 5.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Hand IK")
+	float HandLateralCm = 20.f;
+
 	/** While parkouring, the camera boom does not collide (it would be pulled into the character by walls) and follows with this lag. */
 	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Camera", meta = (ClampMin = "0"))
 	float CameraLagSpeed = 12.f;
@@ -119,6 +136,7 @@ private:
 	FVector SafeLocation = FVector::ZeroVector;
 	TWeakObjectPtr<AActor> IgnoredObstacle;
 	TWeakObjectPtr<UMotionWarpingComponent> WarpComponent;
+	TWeakObjectPtr<UARParkourIKComponent> HandIKComponent;
 	FTimerHandle SafeLocationTimer;
 
 	/** The collision test is switched back on after this long at the latest, if the camera's spot never clears (s). */
