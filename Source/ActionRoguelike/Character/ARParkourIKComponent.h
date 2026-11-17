@@ -8,6 +8,7 @@
 
 class UAnimInstance;
 class UAnimMontage;
+class UPrimitiveComponent;
 
 /**
  * Hands for a mantle: the parkour ability puts world-space targets on the ledge edge here for the length of the montage,
@@ -31,6 +32,10 @@ public:
 	/** Clears everything: no hand is pulled any more. */
 	void End();
 
+	/** The top the mantle ends on: the feet are kept above its surface (see UARParkourIKAnimInstance). */
+	void SetLedge(const UPrimitiveComponent* Top) { Ledge = Top; }
+	const UPrimitiveComponent* GetLedge() const { return Ledge.Get(); }
+
 	bool IsActive() const { return bActive; }
 
 	/** World target and IK weight (0..1) of a hand right now, read from the montage position of MainAnimInstance. */
@@ -38,6 +43,7 @@ public:
 
 private:
 	bool bActive = false;
+	TWeakObjectPtr<const UPrimitiveComponent> Ledge;
 	TWeakObjectPtr<UAnimMontage> Montage;
 	float Ramp = 0.15f;
 	FVector Targets[2] = {FVector::ZeroVector, FVector::ZeroVector};

@@ -217,13 +217,13 @@ void UARGA_Parkour::BeginHandIK(const FProbeResult& Result, const FARParkourClip
 {
 	UARParkourIKComponent* IK = Character ? Character->FindComponentByClass<UARParkourIKComponent>() : nullptr;
 	UPrimitiveComponent* Top = Result.ObstacleComponent.Get();
-	if (!IK || !Top || Result.Move != ARParkour::EMove::Mantle)
+	if (!IK || !Top)
 	{
 		return;
 	}
 
+	// A clip without hand windows (the vaults) only gets the feet.
 	const float Windows[2][2] = {{Clip.LeftHandStart, Clip.LeftHandEnd}, {Clip.RightHandStart, Clip.RightHandEnd}};
-	int32 Placed = 0;
 	for (int32 Side = 0; Side < 2; ++Side)
 	{
 		if (Windows[Side][1] <= Windows[Side][0])
@@ -240,19 +240,17 @@ void UARGA_Parkour::BeginHandIK(const FProbeResult& Result, const FARParkourClip
 			FHitResult Hit;
 			if (Top->LineTraceComponent(Hit, Target + FVector(0.f, 0.f, 30.f), Target - FVector(0.f, 0.f, 30.f), FCollisionQueryParams()) && Hit.ImpactNormal.Z >= 0.7f)
 			{
-				Target.Z = Hit.ImpactPoint.Z;
+				Target.Z = Hit.ImpactPoint.Z + HandHeightCm;
 				IK->SetHand(Side, Target, Windows[Side][0], Windows[Side][1]);
-				++Placed;
 				break;
 			}
 		}
 	}
 
-	if (Placed > 0)
-	{
-		IK->Begin(Montage, Clip.HandRamp);
-		HandIKComponent = IK;
-	}
+	// Always started: the feet use the ledge even when no hand window is set.
+	IK->SetLedge(Top);
+	IK->Begin(Montage, Clip.HandRamp);
+	HandIKComponent = IK;
 }
 
 void UARGA_Parkour::EndHandIK()

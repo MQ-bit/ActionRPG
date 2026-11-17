@@ -33,4 +33,26 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Parkour IK")
 	float WeightR = 0.f;
+
+	/**
+	 * Foot lift for the mantle ledge: the translation is an offset (0, 0, cm) the rig adds to the animated foot, just enough to
+	 * keep the sole on top of the ledge. Weight is 0 when no lift is needed, so the animation keeps the leg.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Parkour IK")
+	FTransform FootTargetL;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Parkour IK")
+	FTransform FootTargetR;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Parkour IK")
+	float FootWeightL = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Parkour IK")
+	float FootWeightR = 0.f;
+
+private:
+	/** Lift (cm) applied to each foot last frame; the new lift is worked out from the pose it produced. */
+	float FootLiftCm[2] = {0.f, 0.f};
+
+	void UpdateFoot(int32 Side, const class UARParkourIKComponent* IK, float DeltaSeconds);
 };

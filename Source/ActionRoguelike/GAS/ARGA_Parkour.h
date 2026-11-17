@@ -125,6 +125,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Hand IK")
 	float HandLateralCm = 20.f;
 
+	/** The hand bone sits this far above the top surface (cm): about the thickness of the hand, so the palm rests on it instead of sinking in. */
+	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Hand IK")
+	float HandHeightCm = 4.f;
+
 	/** While parkouring, the camera boom does not collide (it would be pulled into the character by walls) and follows with this lag. */
 	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Camera", meta = (ClampMin = "0"))
 	float CameraLagSpeed = 12.f;

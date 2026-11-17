@@ -118,6 +118,12 @@ namespace ARParkour
 		return FrontEdgePoint + Inward.GetSafeNormal2D() * InwardCm + Right * (static_cast<float>(Side) * LateralCm);
 	}
 
+	/** Lift (cm) that keeps a sole on a ledge: the lift already applied plus how far the sole still is below WantedZ. Never negative, never above MaxLift. */
+	inline float FootLift(float AppliedLift, float SoleZ, float WantedZ, float MaxLift)
+	{
+		return FMath::Clamp(AppliedLift + (WantedZ - SoleZ), 0.f, MaxLift);
+	}
+
 	/** Index of the rule for this move and height whose variant is closest to the wanted one (first wins a tie), or INDEX_NONE. */
 	inline int32 PickClip(const TArray<FClipRule>& Rules, EMove Move, float Height, EVariant Variant)
 	{

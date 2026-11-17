@@ -31,6 +31,7 @@ void UARParkourIKComponent::Begin(UAnimMontage* InMontage, float InRamp)
 void UARParkourIKComponent::End()
 {
 	bActive = false;
+	Ledge.Reset();
 	Montage.Reset();
 	for (int32 Side = 0; Side < 2; ++Side)
 	{
