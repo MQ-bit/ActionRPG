@@ -11,6 +11,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GAS/ARAbilitySystemComponent.h"
+#include "GAS/ARGA_Parkour.h"
 #include "GAS/ARGameplayTags.h"
 #include "InputActionValue.h"
 #include "MotionWarpingComponent.h"
@@ -143,15 +144,65 @@ void AARPlayerCharacter::OnJumpInput()
 	}
 
 	// An obstacle in reach means parkour; otherwise it is a plain jump.
-	if (!AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(TAG_Ability_Parkour.GetTag())))
+	if (TryParkour())
 	{
-		Jump();
+		ClearParkourBuffer();
+		return;
 	}
+
+	// A running character that pressed early keeps running: the press waits until it is at the distance the clip needs.
+	if (ParkourBufferSeconds > 0.f && ShouldBufferParkour())
+	{
+		ParkourBufferEnd = GetWorld()->GetTimeSeconds() + ParkourBufferSeconds;
+		GetWorldTimerManager().SetTimer(ParkourBufferTimer, this, &AARPlayerCharacter::ParkourBufferTick, 1.f / 120.f, true);
+		return;
+	}
+	Jump();
+}
+
+bool AARPlayerCharacter::TryParkour()
+{
+	return AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(TAG_Ability_Parkour.GetTag()));
+}
+
+bool AARPlayerCharacter::ShouldBufferParkour() const
+{
+	for (const FGameplayAbilitySpec& Spec : AbilitySystemComponent->GetActivatableAbilities())
+	{
+		if (const UARGA_Parkour* Parkour = Cast<UARGA_Parkour>(Spec.GetPrimaryInstance()))
+		{
+			return Parkour->ShouldBufferJump();
+		}
+	}
+	return false;
+}
+
+void AARPlayerCharacter::ParkourBufferTick()
+{
+	// Done when the time is up, something else took over, the parkour started, or there is nothing left to wait for (the wall
+	// is gone or the character stopped: a standing character is walked up to the wall by the ability itself).
+	if (GetWorld()->GetTimeSeconds() > ParkourBufferEnd
+		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag())
+		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag())
+		|| TryParkour() || !ShouldBufferParkour())
+	{
+		ClearParkourBuffer();
+	}
+}
+
+void AARPlayerCharacter::ClearParkourBuffer()
+{
+	GetWorldTimerManager().ClearTimer(ParkourBufferTimer);
 }
 
 void AARPlayerCharacter::ARCancelAbilities()
 {
 	AbilitySystemComponent->CancelAllAbilities();
+}
+
+void AARPlayerCharacter::ARJump()
+{
+	OnJumpInput();
 }
 
 void AARPlayerCharacter::ARAttack()

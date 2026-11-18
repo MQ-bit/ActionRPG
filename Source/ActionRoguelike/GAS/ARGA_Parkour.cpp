@@ -23,8 +23,15 @@ namespace
 	/** The top surface is looked for from this height above the feet; taller things are not climbable anyway. */
 	constexpr float TopProbeHeight = ARParkour::MantleMaxHeight + 100.f;
 	constexpr float ClearanceProbeLength = 400.f;
-	/** Obstacles deeper than this count as "very thick"; only the vault limit (150) matters. */
+	/** Obstacles deeper than this count as "very thick"; only the vault limit (75) matters. */
 	constexpr float MaxThicknessProbe = 400.f;
+	/** Moving at least this fast (cm/s), a press that is too far from the wall waits until the character has run closer. */
+	constexpr float BufferMinSpeed = 120.f;
+	/**
+	 * The approach warp absorbs up to this much (cm) more distance to the wall than the clip's reference distance. A wall farther
+	 * than that is run up to first (moving) or not parkoured at all (standing).
+	 */
+	constexpr float GlideMaxCm = 60.f;
 }
 
 UARGA_Parkour::UARGA_Parkour()
@@ -40,7 +47,41 @@ bool UARGA_Parkour::CanActivateAbility(const FGameplayAbilitySpecHandle Handle, 
 	const FGameplayTagContainer* SourceTags, const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
 {
 	FProbeResult Result;
-	return Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags) && Probe(ActorInfo, Result);
+	return Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags) && Probe(ActorInfo, Result)
+		&& !IsTooFar(Result, ActorInfo);
+}
+
+int32 UARGA_Parkour::PickClipIndex(const FProbeResult& Result, const ACharacter* Character) const
+{
+	TArray<ARParkour::FClipRule> Rules;
+	Rules.Reserve(Clips.Num());
+	for (const FARParkourClip& Clip : Clips)
+	{
+		Rules.Add({Clip.Move == EARParkourMoveKind::Mantle ? ARParkour::EMove::Mantle : ARParkour::EMove::Vault,
+			Clip.MinHeight, Clip.MaxHeight, static_cast<ARParkour::EVariant>(Clip.Variant)});
+	}
+	return ARParkour::PickClip(Rules, Result.Move, Result.Height, ARParkour::VariantForSpeed(Character->GetVelocity().Size2D()));
+}
+
+bool UARGA_Parkour::IsTooFar(const FProbeResult& Result, const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	const ACharacter* Character = ActorInfo ? Cast<ACharacter>(ActorInfo->AvatarActor.Get()) : nullptr;
+	const int32 Index = Character ? PickClipIndex(Result, Character) : INDEX_NONE;
+	if (Index == INDEX_NONE)
+	{
+		return false;
+	}
+	const float Excess = Result.WallDistance - Clips[Index].ReferenceDistanceCm;
+	return Excess > GlideMaxCm;
+}
+
+bool UARGA_Parkour::ShouldBufferJump() const
+{
+	FProbeResult Result;
+	const ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+	// Only a running character waits: a standing one too far from the wall just jumps.
+	return Character && CurrentActorInfo && Character->GetVelocity().Size2D() >= BufferMinSpeed
+		&& Probe(CurrentActorInfo, Result) && IsTooFar(Result, CurrentActorInfo);
 }
 
 void UARGA_Parkour::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
@@ -83,26 +124,66 @@ bool UARGA_Parkour::TryStartMontage(const FProbeResult& Result)
 		return false;
 	}
 
-	TArray<ARParkour::FClipRule> Rules;
-	Rules.Reserve(Clips.Num());
-	for (const FARParkourClip& Clip : Clips)
-	{
-		Rules.Add({Clip.Move == EARParkourMoveKind::Mantle ? ARParkour::EMove::Mantle : ARParkour::EMove::Vault,
-			Clip.MinHeight, Clip.MaxHeight, static_cast<ARParkour::EVariant>(Clip.Variant)});
-	}
-	const int32 Index = ARParkour::PickClip(Rules, Result.Move, Result.Height, ARParkour::VariantForSpeed(Character->GetVelocity().Size2D()));
-	UAnimMontage* Montage = Index != INDEX_NONE ? Clips[Index].Montage.LoadSynchronous() : nullptr;
-	if (!Montage)
+	const int32 Index = PickClipIndex(Result, Character);
+	if (Index == INDEX_NONE || !Clips[Index].Montage.LoadSynchronous())
 	{
 		return false;
 	}
 
+	return PlayClip(Result, Index);
+}
+
+bool UARGA_Parkour::PlayClip(const FProbeResult& Result, int32 Index)
+{
+	ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+	UMotionWarpingComponent* Warp = Character ? Character->FindComponentByClass<UMotionWarpingComponent>() : nullptr;
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+	UAnimInstance* AnimInstance = CurrentActorInfo ? CurrentActorInfo->GetAnimInstance() : nullptr;
+	UAnimMontage* Montage = Clips.IsValidIndex(Index) ? Clips[Index].Montage.LoadSynchronous() : nullptr;
+	if (!Montage || !Warp || !ASC || !AnimInstance)
+	{
+		return false;
+	}
+
+	const FARParkourClip& Clip = Clips[Index];
+	const float StartPosition = Clip.StartPosition;
+
+	// The approach window of the montage warps the root to where the clip has it when the approach ends, measured from the wall:
+	// the clip's reference distance minus the root motion it plays until then. Whatever the real distance, the climb part of the
+	// clip then starts from the geometry it was made for.
+	if (Clip.ApproachEnd > StartPosition)
+	{
+		const FAnimExtractContext Context(0.0, true);
+		const float Travel = Montage->ExtractRootMotionFromTrackRange(StartPosition, Clip.ApproachEnd, Context).GetTranslation().Size2D();
+		const FVector Forward = Result.Inward.GetSafeNormal2D();
+		const float AtEnd = Clip.ReferenceDistanceCm - Travel;
+		const FVector Feet(Result.FrontEdgePoint.X - Forward.X * AtEnd, Result.FrontEdgePoint.Y - Forward.Y * AtEnd, Character->GetActorLocation().Z - Result.HalfHeight);
+		Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::ApproachWarpTargetName(), Feet, Result.Facing);
+	}
+
+	// The back-ledge window warps the body to where the clip has it while the hands are on the top (GASP's BackLedge): along the move
+	// direction measured from the front edge, in height the clip's rise plus the difference between this obstacle's height and the
+	// authored one. The depth of the obstacle only matters after that, for the target window.
+	if (Clip.BackLedgeEnd > Clip.ApproachEnd && Clip.AuthoredHeightCm > 0.f)
+	{
+		const FAnimExtractContext Context(0.0, true);
+		const FVector Moved = Montage->ExtractRootMotionFromTrackRange(StartPosition, Clip.BackLedgeEnd, Context).GetTranslation();
+		const FVector Forward = Result.Inward.GetSafeNormal2D();
+		const float Past = static_cast<float>(Moved.Size2D()) - Clip.ReferenceDistanceCm;
+		const FVector Feet(Result.FrontEdgePoint.X + Forward.X * Past, Result.FrontEdgePoint.Y + Forward.Y * Past,
+			Character->GetActorLocation().Z - Result.HalfHeight + static_cast<float>(Moved.Z) + (Result.Height - Clip.AuthoredHeightCm));
+		Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::BackLedgeWarpTargetName(), Feet, Result.Facing);
+	}
+
+	UE_LOG(LogAR, Verbose, TEXT("[Parkour] clip %d wall %.0f cm (reference %.0f): start %.2f s"), Index, Result.WallDistance, Clips[Index].ReferenceDistanceCm, StartPosition);
 	// The warp target is where the feet end up (the warp notify warps to the feet location).
-	Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::WarpTargetName(), Result.Target - FVector(0.f, 0.f, Result.HalfHeight), Result.Facing);
-	if (ASC->PlayMontage(this, CurrentActivationInfo, Montage, 1.f, NAME_None, Clips[Index].StartPosition) <= 0.f)
+	Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::WarpTargetName(), Result.Target - FVector(0.f, 0.f, Result.HalfHeight - Clip.WarpOffsetZCm) + Result.Inward.GetSafeNormal2D() * Clip.WarpOffsetForwardCm, Result.Facing);
+	if (ASC->PlayMontage(this, CurrentActivationInfo, Montage, 1.f, NAME_None, StartPosition) <= 0.f)
 	{
 		// Could not start: nothing else has been touched yet, so the interpolated move can take over.
 		Warp->RemoveWarpTarget(ARParkour::WarpTargetName());
+		Warp->RemoveWarpTarget(ARParkour::ApproachWarpTargetName());
+		Warp->RemoveWarpTarget(ARParkour::BackLedgeWarpTargetName());
 		return false;
 	}
 
@@ -369,6 +450,8 @@ void UARGA_Parkour::CleanUpMontageMove(bool bArrived)
 	if (UMotionWarpingComponent* Warp = WarpComponent.Get())
 	{
 		Warp->RemoveWarpTarget(ARParkour::WarpTargetName());
+		Warp->RemoveWarpTarget(ARParkour::ApproachWarpTargetName());
+		Warp->RemoveWarpTarget(ARParkour::BackLedgeWarpTargetName());
 	}
 	WarpComponent.Reset();
 	EndHandIK();
@@ -547,5 +630,6 @@ bool UARGA_Parkour::Probe(const FGameplayAbilityActorInfo* ActorInfo, FProbeResu
 	Out.Inward = Forward;
 	Out.ObstacleComponent = Wall.GetComponent();
 	Out.Facing = FRotator(0.f, (-Wall.ImpactNormal).Rotation().Yaw, 0.f);
+	Out.WallDistance = static_cast<float>(FVector::DotProduct(Wall.ImpactPoint - Origin, Forward));
 	return true;
 }

@@ -137,12 +137,12 @@ bool FARParkourAbilityClipFallbackTest::RunTest(const FString& Parameters)
 	const FARClipTableGuard Guard({Clip});
 
 	FARParkourFixture F;
-	if (!F.Init(*this, 90.f, 100.f)) { return false; }
+	if (!F.Init(*this, 90.f, 55.f)) { return false; }
 	TestTrue(TEXT("vault starts with a clip table but no way to play it"), F.TryParkour());
 	const int32 Overlaps = F.TickUntilDone();
 	TestEqual(TEXT("the capsule never overlaps geometry on the way"), Overlaps, 0);
 	TestFalse(TEXT("State.Parkouring is removed at the end"), F.Parkouring());
-	TestEqual(TEXT("it arrives behind the wall"), F.Actor->GetActorLocation().X, 247.0, 5.0);
+	TestEqual(TEXT("it arrives behind the wall"), F.Actor->GetActorLocation().X, 202.0, 5.0);
 	TestTrue(TEXT("walking again"), F.Actor->GetCharacterMovement()->MovementMode == MOVE_Walking);
 	return true;
 }
@@ -152,7 +152,7 @@ bool FARParkourAbilityVaultTest::RunTest(const FString& Parameters)
 {
 	{
 		FARParkourFixture F;
-		if (!F.Init(*this, 90.f, 100.f)) { return false; }
+		if (!F.Init(*this, 90.f, 55.f)) { return false; }
 		TestTrue(TEXT("a 90 cm wall can be vaulted"), F.TryParkour());
 		TestTrue(TEXT("State.Parkouring is on while it runs"), F.Parkouring());
 	}
@@ -182,7 +182,7 @@ bool FARParkourAbilityRejectTest::RunTest(const FString& Parameters)
 	{
 		FARParkourFixture F;
 		if (!F.Init(*this, 90.f, 400.f)) { return false; }
-		TestFalse(TEXT("a thick low block is not vaulted"), F.TryParkour());
+		TestTrue(TEXT("a thick low block is climbed onto instead of vaulted"), F.TryParkour());
 	}
 	return true;
 }
@@ -203,10 +203,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourAbilityGapTest, "ActionRoguelike.Park
 bool FARParkourAbilityGapTest::RunTest(const FString& Parameters)
 {
 	// Codex review: the floor was checked just past the obstacle edge, but the capsule lands one radius further.
-	// Obstacle spans x 100..200; the floor ends at x 210, so the sampled point (205) has floor and the landing (247) does not.
+	// Obstacle spans x 100..155; the floor ends at x 180, so the sampled point (160) has floor and the landing (194) does not.
 	FARParkourFixture F;
-	if (!F.Init(*this, 90.f, 100.f, 210.f)) { return false; }
-	TestFalse(TEXT("no vault onto air"), F.TryParkour());
+	if (!F.Init(*this, 90.f, 55.f, 180.f)) { return false; }
+	// Nothing to land on behind it: the obstacle is climbed onto, never vaulted over the gap.
+	TestTrue(TEXT("no vault onto air: the top is climbed onto instead"), F.TryParkour());
+	F.TickUntilDone();
+	TestEqual(TEXT("it ends on top of the obstacle, not over the gap"), F.Actor->GetActorLocation().X, 152.0, 8.0);
 	return true;
 }
 
@@ -215,7 +218,7 @@ bool FARParkourAbilityCeilingTest::RunTest(const FString& Parameters)
 {
 	// Codex review: a 90 cm wall under a slab whose upper surface is at 220 cm was mantled onto the slab.
 	FARParkourFixture F;
-	if (!F.Init(*this, 90.f, 100.f, 5000.f, 220.f)) { return false; }
+	if (!F.Init(*this, 90.f, 55.f, 5000.f, 220.f)) { return false; }
 	TestFalse(TEXT("the slab above is not the obstacle top"), F.TryParkour());
 	return true;
 }
@@ -226,13 +229,13 @@ bool FARParkourAbilityShapeTest::RunTest(const FString& Parameters)
 	// Codex review: thickness was measured in 25 cm steps, so a 154 cm wall passed the 150 cm limit.
 	{
 		FARParkourFixture F;
-		if (!F.Init(*this, 90.f, 148.f)) { return false; }
-		TestTrue(TEXT("148 cm thick still vaults"), F.TryParkour());
+		if (!F.Init(*this, 90.f, 58.f)) { return false; }
+		TestTrue(TEXT("58 cm thick still vaults"), F.TryParkour());
 	}
 	{
 		FARParkourFixture F;
 		if (!F.Init(*this, 90.f, 154.f)) { return false; }
-		TestFalse(TEXT("154 cm thick does not vault"), F.TryParkour());
+		TestTrue(TEXT("154 cm thick is climbed onto instead of vaulted"), F.TryParkour());
 	}
 	// Codex review: a 200 cm pillar only 30 cm deep was mantled; the capsule centre would stand beyond its top.
 	{
@@ -253,12 +256,12 @@ bool FARParkourAbilityMotionTest::RunTest(const FString& Parameters)
 {
 	{
 		FARParkourFixture F;
-		if (!F.Init(*this, 90.f, 100.f)) { return false; }
+		if (!F.Init(*this, 90.f, 55.f)) { return false; }
 		TestTrue(TEXT("vault starts"), F.TryParkour());
 		const int32 Overlaps = F.TickUntilDone();
 		TestEqual(TEXT("vault: the capsule never overlaps geometry on the way"), Overlaps, 0);
 		TestFalse(TEXT("vault: State.Parkouring is removed at the end"), F.Parkouring());
-		TestEqual(TEXT("vault: ends 47 cm behind the back face"), F.Actor->GetActorLocation().X, 247.0, 5.0);
+		TestEqual(TEXT("vault: ends 47 cm behind the back face"), F.Actor->GetActorLocation().X, 202.0, 5.0);
 		TestEqual(TEXT("vault: ends standing on the floor"), F.Actor->GetActorLocation().Z, 97.0, 5.0);
 		TestTrue(TEXT("vault: back in walking mode"), F.Actor->GetCharacterMovement()->MovementMode == MOVE_Walking);
 	}
@@ -283,14 +286,14 @@ bool FARParkourAbilityHitchTest::RunTest(const FString& Parameters)
 	// ends inside the first frame; the chord from the start to the first position would run into the wall (the world
 	// clamps longer frames, so 0.2 s is the biggest hitch a test can produce).
 	FARParkourFixture F;
-	if (!F.Init(*this, 90.f, 100.f)) { return false; }
+	if (!F.Init(*this, 90.f, 55.f)) { return false; }
 	TestTrue(TEXT("vault starts"), F.TryParkour());
 	for (int32 i = 0; i < 10 && F.Parkouring(); ++i)
 	{
 		F.WorldWrapper.TickTestWorld(0.2f);
 	}
 	TestFalse(TEXT("the vault completed instead of being blocked and cancelled"), F.Parkouring());
-	TestEqual(TEXT("it arrives behind the wall"), F.Actor->GetActorLocation().X, 247.0, 5.0);
+	TestEqual(TEXT("it arrives behind the wall"), F.Actor->GetActorLocation().X, 202.0, 5.0);
 	TestTrue(TEXT("walking again"), F.Actor->GetCharacterMovement()->MovementMode == MOVE_Walking);
 	return true;
 }
@@ -299,7 +302,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourAbilityCancelTest, "ActionRoguelike.P
 bool FARParkourAbilityCancelTest::RunTest(const FString& Parameters)
 {
 	FARParkourFixture F;
-	if (!F.Init(*this, 90.f, 100.f)) { return false; }
+	if (!F.Init(*this, 90.f, 55.f)) { return false; }
 	TestTrue(TEXT("vault starts"), F.TryParkour());
 	for (int32 i = 0; i < 4; ++i)
 	{
@@ -320,13 +323,13 @@ bool FARParkourAbilityBlockingTest::RunTest(const FString& Parameters)
 {
 	{
 		FARParkourFixture F;
-		if (!F.Init(*this, 90.f, 100.f)) { return false; }
+		if (!F.Init(*this, 90.f, 55.f)) { return false; }
 		F.ASC->AddLooseGameplayTag(TAG_State_Attacking.GetTag());
 		TestFalse(TEXT("no parkour while attacking"), F.TryParkour());
 	}
 	{
 		FARParkourFixture F;
-		if (!F.Init(*this, 90.f, 100.f)) { return false; }
+		if (!F.Init(*this, 90.f, 55.f)) { return false; }
 		TestTrue(TEXT("parkour starts"), F.TryParkour());
 		TestFalse(TEXT("no attack while parkouring"), F.ASC->TryActivateAbilityByClass(UARGA_BasicAttack::StaticClass()));
 	}

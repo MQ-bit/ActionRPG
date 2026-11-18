@@ -38,9 +38,26 @@ protected:
 	/** Press: parkour if an obstacle is in reach, else a jump. Release stops the jump. Ignored while attacking or vaulting. */
 	void OnJumpInput();
 
+	/** Tries the parkour ability. */
+	bool TryParkour();
+
+	/** A running character pressed jump with a wall ahead that is still too far for the parkour clip. */
+	bool ShouldBufferParkour() const;
+
+	/** Retries the parkour ability every frame while the buffered press is valid. */
+	void ParkourBufferTick();
+	void ClearParkourBuffer();
+
+	FTimerHandle ParkourBufferTimer;
+	double ParkourBufferEnd = 0.0;
+
 	/** Console command `ARCancelAbilities`: cancels every running ability, for testing cancel paths (parkour) without a death. */
 	UFUNCTION(Exec)
 	void ARCancelAbilities();
+
+	/** Console command `ARJump`: same path as the jump input, for testing without a keyboard. */
+	UFUNCTION(Exec)
+	void ARJump();
 
 	/** Console command `ARAttack`: same path as the attack input, for testing without a mouse. */
 	UFUNCTION(Exec)
@@ -78,6 +95,10 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputAction> JumpAction;
+
+	/** How long (s) a jump press made too far from a vaultable wall is kept: the character runs up to it, then the parkour starts. */
+	UPROPERTY(EditDefaultsOnly, Category = "Input", meta = (ClampMin = "0"))
+	float ParkourBufferSeconds = 0.6f;
 
 	/** Player HUD health bar, shown for the local player. Optional. Set in the character's data-only Blueprint. */
 	UPROPERTY(EditDefaultsOnly, Category = "UI")

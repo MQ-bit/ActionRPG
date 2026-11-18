@@ -51,6 +51,15 @@ public:
 	float FootWeightR = 0.f;
 
 private:
+	/** Offset (cm) applied to each hand last frame to keep it out of the obstacle; see UpdateHandPush. */
+	FVector HandPush[2] = {FVector::ZeroVector, FVector::ZeroVector};
+
+	/**
+	 * A hand the animation puts inside the obstacle (an arm reaching up a wall that is too close) is pushed out through the nearest
+	 * face. Only used where the ledge window does not already hold the hand (the window weight wins).
+	 */
+	void UpdateHandPush(int32 Side, const class UARParkourIKComponent* IK, float DeltaSeconds);
+
 	/** Lift (cm) applied to each foot last frame; the new lift is worked out from the pose it produced. */
 	float FootLiftCm[2] = {0.f, 0.f};
 

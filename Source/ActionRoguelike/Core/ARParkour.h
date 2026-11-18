@@ -36,6 +36,18 @@ namespace ARParkour
 		return FName(TEXT("ParkourTarget"));
 	}
 
+	/** The warp target of the montage's back-ledge window (see FARParkourClip::BackLedgeEnd). */
+	inline FName BackLedgeWarpTargetName()
+	{
+		return FName(TEXT("ParkourBackLedge"));
+	}
+
+	/** The warp target of the montage's approach window (see FARParkourClip::ApproachEnd). */
+	inline FName ApproachWarpTargetName()
+	{
+		return FName(TEXT("ParkourApproach"));
+	}
+
 	/** One entry of the clip table, without the asset: which move, which obstacle heights, which speed. */
 	struct FClipRule
 	{
@@ -61,14 +73,16 @@ namespace ARParkour
 	};
 
 	constexpr float VaultMinHeight = 50.f;
-	constexpr float VaultMaxHeight = 120.f;
-	constexpr float VaultMaxThickness = 150.f;
+	/** The vault clip (Hurdle_1_0) is made for 100 cm; stretched higher the legs go through the top (measured: 19 cm deep at 120, 7 at 90). */
+	constexpr float VaultMaxHeight = 95.f;
+	/** The vault clip (Hurdle_1_0) crosses about this much; a thicker obstacle is climbed onto instead (measured: 90 cm fails). */
+	constexpr float VaultMaxThickness = 59.f;
 	constexpr float MantleMaxHeight = 240.f;
 	constexpr float MaxWalkableSlopeDegrees = 30.f;
 	/** Capsule height of the player (2 x 96). The top surface needs this much free space. */
 	constexpr float RequiredClearance = 192.f;
 
-	/** Vault: low and thin with floor behind it. Mantle: taller, flat enough to stand on. Anything else: no move, a plain jump. */
+	/** Vault: low and thin with floor behind it. Mantle: taller, or low but thick or without floor behind it; flat enough to stand on. Anything else: no move, a plain jump. */
 	inline EMove Classify(const FObstacle& Obstacle)
 	{
 		if (Obstacle.ClearanceAbove < RequiredClearance || Obstacle.SurfaceSlopeDegrees > MaxWalkableSlopeDegrees)
@@ -78,7 +92,8 @@ namespace ARParkour
 
 		if (Obstacle.Height >= VaultMinHeight && Obstacle.Height <= VaultMaxHeight)
 		{
-			return (Obstacle.Thickness <= VaultMaxThickness && Obstacle.bLandingBehind) ? EMove::Vault : EMove::None;
+			// Too thick to cross, or nothing to land on behind it: climb onto the top instead.
+			return (Obstacle.Thickness <= VaultMaxThickness && Obstacle.bLandingBehind) ? EMove::Vault : EMove::Mantle;
 		}
 
 		if (Obstacle.Height > VaultMaxHeight && Obstacle.Height <= MantleMaxHeight)

@@ -50,6 +50,47 @@ struct FARParkourClip
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TSoftObjectPtr<UAnimMontage> Montage;
 
+	/**
+	 * How far the capsule centre is from the wall when the clip, played from StartPosition, was made to start (cm). The climb part
+	 * of the clip fits the obstacle for this distance only; the approach window of the montage makes up the difference.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour", meta = (ClampMin = "0"))
+	float ReferenceDistanceCm = 100.f;
+
+	/**
+	 * Montage time (s) where the approach ends, i.e. where the clip has the body at the obstacle. The montage has a Motion Warping
+	 * notify state named ParkourApproach up to here and one named ParkourTarget after it. 0 = no approach window.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour", meta = (ClampMin = "0"))
+	float ApproachEnd = 0.f;
+
+	/**
+	 * Montage time (s) where the hands leave the obstacle, i.e. the end of the part of the clip in which the body is held at the
+	 * height of the obstacle (the hands planted on it). Between ApproachEnd and here the montage has a Motion Warping notify state
+	 * named ParkourBackLedge that moves the body by the difference between the obstacle's height and AuthoredHeightCm, so the hands
+	 * land on the top whatever the height. 0 = no back-ledge window.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour", meta = (ClampMin = "0"))
+	float BackLedgeEnd = 0.f;
+
+	/** The obstacle height (cm) the clip was made for: where its hands plant (hand bone height minus about 4 cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour", meta = (ClampMin = "0"))
+	float AuthoredHeightCm = 0.f;
+
+	/**
+	 * Added to the height of the warp target (cm), for a clip whose last frame ends this much above (use a negative value) or
+	 * below the target: the arrival snap then has nothing left to correct, so the capsule does not pop on the last frame.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour")
+	float WarpOffsetZCm = 0.f;
+
+	/**
+	 * Added to the warp target along the move direction (cm). The montage keeps playing root motion while it blends out, after the
+	 * warp has ended: a clip that ends this much beyond (use a negative value) or short of the target gets it back here.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour")
+	float WarpOffsetForwardCm = 0.f;
+
 	/** Where in the montage to start (seconds), to skip a long run-in. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour", meta = (ClampMin = "0"))
 	float StartPosition = 0.f;

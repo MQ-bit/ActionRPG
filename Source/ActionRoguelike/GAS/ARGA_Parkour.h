@@ -44,6 +44,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parkour|Montage")
 	TArray<FARParkourClip> Clips;
 
+public:
+	/**
+	 * For the jump input buffer: a running character pressed jump with a wall ahead that is still too far for the clip. The caller
+	 * keeps the input and tries to activate every frame until the character has run up to the clip's distance.
+	 */
+	bool ShouldBufferJump() const;
+
 protected:
 	/** What the probe decided: the move, where the capsule ends up, and which way to face. */
 	struct FProbeResult
@@ -56,6 +63,8 @@ protected:
 		/** Height of the obstacle top above the feet, used to pick the clip. */
 		float Height = 0.f;
 		float HalfHeight = 0.f;
+		/** Distance from the capsule centre to the wall surface, along the move direction. */
+		float WallDistance = 0.f;
 		TWeakObjectPtr<AActor> Obstacle;
 		/** The obstacle's front top edge at the point the probe hit, the direction into it, and the component that has the top. */
 		FVector FrontEdgePoint = FVector::ZeroVector;
@@ -66,8 +75,18 @@ protected:
 	/** Traces in front of the avatar and classifies what it finds. False when there is no move. */
 	bool Probe(const FGameplayAbilityActorInfo* ActorInfo, FProbeResult& Out) const;
 
+	/** The clip the move would play, or INDEX_NONE. */
+	int32 PickClipIndex(const FProbeResult& Result, const ACharacter* Character) const;
+
+	/** The wall is more than the approach warp can absorb beyond the clip's reference distance. */
+	bool IsTooFar(const FProbeResult& Result, const FGameplayAbilityActorInfo* ActorInfo) const;
+
 	/** Plays the matching montage with a warp target; false (and nothing changed) when there is none or it cannot play. */
 	bool TryStartMontage(const FProbeResult& Result);
+
+	/** Plays clip Index with its warp targets set for this wall. False (and nothing changed) when the montage cannot play. */
+	bool PlayClip(const FProbeResult& Result, int32 Index);
+
 
 	void StartInterpolatedMove(const FProbeResult& Result);
 
@@ -108,7 +127,7 @@ protected:
 
 	/** How far in front of the capsule an obstacle is looked for (cm). */
 	UPROPERTY(EditDefaultsOnly, Category = "Parkour")
-	float DetectDistance = 120.f;
+	float DetectDistance = 300.f;
 
 	/** The montage counts as arrived when the capsule ends within this distance of the target (cm); it is then snapped onto it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Montage")

@@ -27,13 +27,15 @@ bool FARParkourVaultTest::RunTest(const FString& Parameters)
 	using ARParkour::EMove;
 	TestTrue(TEXT("height 50 is the lowest vault"), ARParkour::Classify(Wall(50.f)) == EMove::Vault);
 	TestTrue(TEXT("height 90 vaults"), ARParkour::Classify(Wall(90.f)) == EMove::Vault);
-	TestTrue(TEXT("height 120 is the highest vault"), ARParkour::Classify(Wall(120.f)) == EMove::Vault);
-	TestTrue(TEXT("thickness 150 still vaults"), ARParkour::Classify(Wall(90.f, 150.f)) == EMove::Vault);
-	TestTrue(TEXT("thickness 151 does not vault"), ARParkour::Classify(Wall(90.f, 151.f)) == EMove::None);
+	TestTrue(TEXT("height 95 is the highest vault"), ARParkour::Classify(Wall(95.f)) == EMove::Vault);
+	TestTrue(TEXT("thickness 59 still vaults"), ARParkour::Classify(Wall(90.f, 59.f)) == EMove::Vault);
+	TestTrue(TEXT("thickness 60 is climbed onto instead"), ARParkour::Classify(Wall(90.f, 60.f)) == EMove::Mantle);
+	TestTrue(TEXT("a very long low obstacle is climbed onto"), ARParkour::Classify(Wall(90.f, 600.f)) == EMove::Mantle);
+	TestTrue(TEXT("but too low to climb onto is still nothing"), ARParkour::Classify(Wall(49.f, 600.f)) == EMove::None);
 
 	ARParkour::FObstacle NoLanding = Wall(90.f);
 	NoLanding.bLandingBehind = false;
-	TestTrue(TEXT("no floor behind: no vault"), ARParkour::Classify(NoLanding) == EMove::None);
+	TestTrue(TEXT("no floor behind: no vault, climb onto it"), ARParkour::Classify(NoLanding) == EMove::Mantle);
 	return true;
 }
 
@@ -41,7 +43,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourMantleTest, "ActionRoguelike.Parkour.
 bool FARParkourMantleTest::RunTest(const FString& Parameters)
 {
 	using ARParkour::EMove;
-	TestTrue(TEXT("just above the vault limit mantles"), ARParkour::Classify(Wall(121.f)) == EMove::Mantle);
+	TestTrue(TEXT("just above the vault limit mantles"), ARParkour::Classify(Wall(96.f)) == EMove::Mantle);
 	TestTrue(TEXT("height 200 mantles"), ARParkour::Classify(Wall(200.f)) == EMove::Mantle);
 	TestTrue(TEXT("height 240 is the highest mantle"), ARParkour::Classify(Wall(240.f)) == EMove::Mantle);
 	TestTrue(TEXT("height 241 is too high"), ARParkour::Classify(Wall(241.f)) == EMove::None);
