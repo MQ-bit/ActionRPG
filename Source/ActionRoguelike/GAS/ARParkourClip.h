@@ -85,8 +85,8 @@ struct FARParkourClip
 	float WarpOffsetZCm = 0.f;
 
 	/**
-	 * Added to the warp target along the move direction (cm). The montage keeps playing root motion while it blends out, after the
-	 * warp has ended: a clip that ends this much beyond (use a negative value) or short of the target gets it back here.
+	 * Moves the landing spot along the move direction (cm), e.g. for a clip whose trailing leg is still over the obstacle when it lands
+	 * on a thin one. Used for the warp target and for the arrival check alike, and only when the moved spot is free.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour")
 	float WarpOffsetForwardCm = 0.f;

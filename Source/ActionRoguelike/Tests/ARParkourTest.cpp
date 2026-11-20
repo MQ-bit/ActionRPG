@@ -165,6 +165,9 @@ bool FARParkourFootLiftTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("sole 4 above the ledge after a lift of 10: ease back to 6"), FootLift(10.f, 4.f, 0.f, 20.f), 6.f);
 	TestEqual(TEXT("sole well above the ledge: no lift"), FootLift(0.f, 30.f, 0.f, 20.f), 0.f);
 	TestEqual(TEXT("capped"), FootLift(0.f, -50.f, 0.f, 20.f), 20.f);
+	TestEqual(TEXT("a hovering sole is only pulled down when lowering is allowed"), FootLift(0.f, 9.f, 0.f, 20.f, -15.f), -9.f);
+	TestEqual(TEXT("pulling down is capped"), FootLift(0.f, 40.f, 0.f, 20.f, -15.f), -15.f);
+	TestEqual(TEXT("already pulled down 9 and the sole is on the ledge: keep -9"), FootLift(-9.f, 0.f, 0.f, 20.f, -15.f), -9.f);
 	return true;
 }
 

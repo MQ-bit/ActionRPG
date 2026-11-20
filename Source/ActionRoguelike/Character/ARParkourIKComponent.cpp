@@ -32,12 +32,20 @@ void UARParkourIKComponent::End()
 {
 	bActive = false;
 	Ledge.Reset();
+	Inward = FVector::ZeroVector;
 	Montage.Reset();
 	for (int32 Side = 0; Side < 2; ++Side)
 	{
 		WindowStart[Side] = 0.f;
 		WindowEnd[Side] = 0.f;
 	}
+}
+
+bool UARParkourIKComponent::InFinalPhase(const UAnimInstance* MainAnimInstance, float WindowSeconds) const
+{
+	const UAnimMontage* PlayingMontage = Montage.Get();
+	return bActive && MainAnimInstance && PlayingMontage && MainAnimInstance->Montage_IsPlaying(PlayingMontage)
+		&& MainAnimInstance->Montage_GetPosition(PlayingMontage) >= PlayingMontage->GetPlayLength() - WindowSeconds;
 }
 
 void UARParkourIKComponent::GetHand(int32 Side, const UAnimInstance* MainAnimInstance, FVector& OutWorldTarget, float& OutWeight) const

@@ -176,8 +176,25 @@ bool UARGA_Parkour::PlayClip(const FProbeResult& Result, int32 Index)
 	}
 
 	UE_LOG(LogAR, Verbose, TEXT("[Parkour] clip %d wall %.0f cm (reference %.0f): start %.2f s"), Index, Result.WallDistance, Clips[Index].ReferenceDistanceCm, StartPosition);
+	// Where the capsule ends up: the probed target, moved along the move direction by the clip's offset when that spot is free (the
+	// arrival check and the snap use the same spot, so the offset never causes a pop).
+	FVector Landing = Result.Target;
+	if (!FMath::IsNearlyZero(Clip.WarpOffsetForwardCm))
+	{
+		const FVector Shifted = Landing + Result.Inward.GetSafeNormal2D() * Clip.WarpOffsetForwardCm;
+		// The probe only checked the floor under the original target: the moved spot must be free and have walkable floor of about the
+		// same height under it (not the edge of a platform or a gap), or the landing stays where it was probed.
+		FHitResult Support;
+		const FVector Up(0.f, 0.f, Result.HalfHeight);
+		const bool bSupported = Character->GetWorld()->LineTraceSingleByChannel(Support, Shifted + Up, Shifted - Up - FVector(0.f, 0.f, 20.f), ECC_Visibility, FCollisionQueryParams(SCENE_QUERY_STAT(ARParkourLanding), false, Character))
+			&& Support.ImpactNormal.Z >= 0.7f && FMath::Abs(Support.ImpactPoint.Z + Result.HalfHeight - Landing.Z) <= 12.f;
+		if (bSupported && !CapsuleBlockedAt(Shifted))
+		{
+			Landing = Shifted;
+		}
+	}
 	// The warp target is where the feet end up (the warp notify warps to the feet location).
-	Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::WarpTargetName(), Result.Target - FVector(0.f, 0.f, Result.HalfHeight - Clip.WarpOffsetZCm) + Result.Inward.GetSafeNormal2D() * Clip.WarpOffsetForwardCm, Result.Facing);
+	Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::WarpTargetName(), Landing - FVector(0.f, 0.f, Result.HalfHeight - Clip.WarpOffsetZCm), Result.Facing);
 	if (ASC->PlayMontage(this, CurrentActivationInfo, Montage, 1.f, NAME_None, StartPosition) <= 0.f)
 	{
 		// Could not start: nothing else has been touched yet, so the interpolated move can take over.
@@ -188,7 +205,7 @@ bool UARGA_Parkour::PlayClip(const FProbeResult& Result, int32 Index)
 	}
 
 	bMontageMove = true;
-	MontageTarget = Result.Target;
+	MontageTarget = Landing;
 	SafeLocation = Character->GetActorLocation();
 	IgnoredObstacle = Result.Obstacle;
 	WarpComponent = Warp;
@@ -197,6 +214,9 @@ bool UARGA_Parkour::PlayClip(const FProbeResult& Result, int32 Index)
 	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
 	Movement->StopMovementImmediately();
 	Movement->SetMovementMode(MOVE_Flying);
+	// Flying has no braking: when the root motion ends the capsule would keep the last velocity (a slide of 40 cm and more).
+	SavedBrakingDecelerationFlying = Movement->BrakingDecelerationFlying;
+	Movement->BrakingDecelerationFlying = 8000.f;
 	if (AActor* Obstacle = IgnoredObstacle.Get())
 	{
 		Character->GetCapsuleComponent()->IgnoreActorWhenMoving(Obstacle, true);
@@ -205,11 +225,38 @@ bool UARGA_Parkour::PlayClip(const FProbeResult& Result, int32 Index)
 	FOnMontageEnded Ended;
 	Ended.BindUObject(this, &UARGA_Parkour::OnMontageEnded, ++MontagePlaybackId);
 	AnimInstance->Montage_SetEndDelegate(Ended, Montage);
+	FOnMontageBlendingOutStarted BlendingOut;
+	BlendingOut.BindUObject(this, &UARGA_Parkour::OnMontageBlendingOut, MontagePlaybackId);
+	AnimInstance->Montage_SetBlendingOutDelegate(BlendingOut, Montage);
 
 	BeginHandIK(Result, Clips[Index], Montage, Character);
 
 	Character->GetWorld()->GetTimerManager().SetTimer(SafeLocationTimer, this, &UARGA_Parkour::SampleSafeLocation, 1.f / 30.f, true);
 	return true;
+}
+
+void UARGA_Parkour::OnMontageBlendingOut(UAnimMontage* /*Montage*/, bool bInterrupted, int32 PlaybackId)
+{
+	// A montage cut short by something else is handled when it ends (OnMontageEnded cancels the move).
+	if (bInterrupted || !bMontageMove || PlaybackId != MontagePlaybackId || !IsActive())
+	{
+		return;
+	}
+	ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+	if (!Character || FVector::Dist(Character->GetActorLocation(), MontageTarget) > ArrivalTolerance)
+	{
+		return; // not on the target: the end handler decides what to do
+	}
+
+	// On the target. The ability goes on until the montage is over (ending it would cut the montage and its blend-out), but the
+	// character is a walking one from here on, so the anim blueprint blends the montage into the ground pose instead of the in-air pose.
+	if (AActor* Obstacle = IgnoredObstacle.Get())
+	{
+		Character->GetCapsuleComponent()->IgnoreActorWhenMoving(Obstacle, false);
+	}
+	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+	Movement->StopMovementImmediately();
+	Movement->SetMovementMode(MOVE_Walking);
 }
 
 void UARGA_Parkour::OnMontageEnded(UAnimMontage* /*Montage*/, bool bInterrupted, int32 PlaybackId)
@@ -329,7 +376,7 @@ void UARGA_Parkour::BeginHandIK(const FProbeResult& Result, const FARParkourClip
 	}
 
 	// Always started: the feet use the ledge even when no hand window is set.
-	IK->SetLedge(Top);
+	IK->SetLedge(Top, Result.Inward);
 	IK->Begin(Montage, Clip.HandRamp);
 	HandIKComponent = IK;
 }
@@ -458,6 +505,7 @@ void UARGA_Parkour::CleanUpMontageMove(bool bArrived)
 
 	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
 	Movement->Velocity = FVector::ZeroVector;
+	Movement->BrakingDecelerationFlying = SavedBrakingDecelerationFlying;
 	Movement->SetMovementMode(bArrived ? MOVE_Walking : MOVE_Falling);
 }
 

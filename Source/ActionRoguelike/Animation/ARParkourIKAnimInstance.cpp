@@ -13,13 +13,12 @@ namespace
 	// Off by default: it jitters the arms (measured 3-7x the plain animation). The push is judged from last frame's final pose, so an IK that does not hit its target exactly
 	// skews the estimate and the error accumulates. A proper fix judges it on the rig's input pose.
 	TAutoConsoleVariable<int32> CVarHandPush(TEXT("ar.Parkour.HandPush"), 0, TEXT("1 keeps the hands out of the parkour obstacle (jitters, see the source), 0 leaves them to the animation."));
+	TAutoConsoleVariable<int32> CVarFootWall(TEXT("ar.Parkour.FootWall"), 1, TEXT("1 puts the feet against the wall face while the hands hold the ledge, 0 leaves them dangling."));
 	TAutoConsoleVariable<int32> CVarFootLift(TEXT("ar.Parkour.FootLift"), 1, TEXT("1 lifts the feet onto the ledge top of a parkour move, 0 leaves them to the animation."));
 
-	// shortcut: mannequin bone names and the heights measured on it (ankle joint ~8.5 cm and ball joint ~0.5 cm above the sole on flat ground); another skeleton needs its own.
+	// shortcut: mannequin bone names (the heights of the joints above the sole are properties, set per character in the Blueprint).
 	const FName FootBone[2] = {TEXT("foot_l"), TEXT("foot_r")};
 	const FName BallBone[2] = {TEXT("ball_l"), TEXT("ball_r")};
-	constexpr float AnkleHeightCm = 8.5f;
-	constexpr float BallHeightCm = 0.5f;
 	constexpr float MaxFootLiftCm = 20.f;
 	const FName HandBone[2] = {TEXT("hand_l"), TEXT("hand_r")};
 	/** The hand is kept this far outside the obstacle: its thickness plus a margin, because the push shows one frame late. */
@@ -30,6 +29,18 @@ namespace
 	// Fast: the lift has to keep up with a foot crossing the edge in a few frames at 60 fps (a slow interpolation shows as a penetration).
 	constexpr float FootLiftSpeed = 40.f;
 	constexpr float LedgeMarginCm = 12.f;
+	/** In the last part of the montage a foot hovering above the ledge top (the retargeted clips end with the feet up to 13 cm above it) is pulled down onto it, by at most this much. */
+	constexpr float MaxFootPlantCm = 15.f;
+	/** Feet within this distance of the wall face (and below the top) are put against it, at FootWallRadiusCm from the face (the ball joint is about that far above the sole). */
+	constexpr float FootWallReachCm = 60.f;
+	constexpr float FootWallRadiusCm = 6.f;
+	/** cm per second (a constant speed: a rate-style interpolation with a speed this high moves the whole way in one frame, a pop of 40 cm). */
+	constexpr float FootWallSpeed = 150.f;
+	/** The feet only go to the wall while a hand holds the ledge with at least this weight. */
+	constexpr float FootWallHandWeight = 0.3f;
+	constexpr float FootPlantPhaseSeconds = 0.5f;
+	/** A foot counts as over the top surface when it is this far inside the box outline. */
+	constexpr float FootPlantInsetCm = 10.f;
 	// The lift counts as a full IK weight from this many cm up (same reason as the hand push); below it the leg blends back to the animation.
 	constexpr float FullWeightLiftCm = 0.25f;
 }
@@ -107,10 +118,12 @@ void UARParkourIKAnimInstance::UpdateHandPush(int32 Side, const UARParkourIKComp
 void UARParkourIKAnimInstance::UpdateFoot(int32 Side, const UARParkourIKComponent* IK, float DeltaSeconds)
 {
 	float& Applied = FootLiftCm[Side];
+	FVector& Wall = FootWallCm[Side];
 	float& Weight = Side == 0 ? FootWeightL : FootWeightR;
 	FTransform& Target = Side == 0 ? FootTargetL : FootTargetR;
 
 	float Wanted = 0.f;
+	FVector WallWanted = FVector::ZeroVector;
 	const USkeletalMeshComponent* Mesh = GetOwningComponent();
 	const UPrimitiveComponent* Ledge = IK && CVarFootLift.GetValueOnGameThread() != 0 ? IK->GetLedge() : nullptr;
 	if (Mesh && Ledge)
@@ -125,20 +138,52 @@ void UARParkourIKAnimInstance::UpdateFoot(int32 Side, const UARParkourIKComponen
 		if (Over.IsInside(FVector2D(Ball)) || Over.IsInside(FVector2D(Foot)))
 		{
 			const float SoleZ = FMath::Min(Foot.Z - AnkleHeightCm, Ball.Z - BallHeightCm);
-			// A foot far below the top (dangling in front of the wall) is left to the animation, a partial lift would only distort it.
-			if (Box.Max.Z - SoleZ + Applied <= MaxFootLiftCm)
+			// How far below the top the animated foot is without any lift (negative: it hovers above the top).
+			const float Below = Box.Max.Z - SoleZ + Applied;
+			// A foot over the top surface (not just at its edge) is pulled down onto it all through the move: with the body crossing the
+			// ledge the retargeted clips keep the feet 15-20 cm above it, which reads as floating. In the last part of the montage any
+			// foot over the box counts.
+			const FBox2D Inner(FVector2D(Box.Min) + FVector2D(FootPlantInsetCm), FVector2D(Box.Max) - FVector2D(FootPlantInsetCm));
+			const bool bOverTop = Inner.bIsValid && Inner.IsInside(FVector2D(Ball));
+			const float Lowest = (bOverTop || IK->InFinalPhase(Mesh->GetAnimInstance(), FootPlantPhaseSeconds)) ? -MaxFootPlantCm : 0.f;
+			if (Below <= MaxFootLiftCm && Below >= Lowest)
 			{
-				Wanted = ARParkour::FootLift(Applied, SoleZ, Box.Max.Z, MaxFootLiftCm);
+				Wanted = ARParkour::FootLift(Applied, SoleZ, Box.Max.Z, MaxFootLiftCm, Lowest);
+			}
+		}
+
+		// Hanging on the ledge: the feet go against the wall face instead of dangling in front of (or inside) it.
+		const FVector Inward = IK->GetInward();
+		if (CVarFootWall.GetValueOnGameThread() != 0 && !Inward.IsNearlyZero() && FMath::Max(WeightL, WeightR) > FootWallHandWeight)
+		{
+			// The front face of the box: perpendicular to the dominant axis of the move direction.
+			const bool bAlongX = FMath::Abs(Inward.X) >= FMath::Abs(Inward.Y);
+			const double FaceCoord = bAlongX ? (Inward.X > 0.0 ? Box.Min.X : Box.Max.X) : (Inward.Y > 0.0 ? Box.Min.Y : Box.Max.Y);
+			const FVector Axis = bAlongX ? FVector(FMath::Sign(Inward.X), 0.0, 0.0) : FVector(0.0, FMath::Sign(Inward.Y), 0.0);
+			const double BallCoord = bAlongX ? Ball.X : Ball.Y;
+			const double AcrossCoord = bAlongX ? Ball.Y : Ball.X;
+			const double AcrossMin = bAlongX ? Box.Min.Y : Box.Min.X;
+			const double AcrossMax = bAlongX ? Box.Max.Y : Box.Max.X;
+			// Gap between the ball joint and the face along the move direction: positive = in front of the wall, negative = inside it.
+			const float Gap = static_cast<float>((FaceCoord - BallCoord) * (bAlongX ? FMath::Sign(Inward.X) : FMath::Sign(Inward.Y)));
+			const bool bOnTheFace = AcrossCoord >= AcrossMin - LedgeMarginCm && AcrossCoord <= AcrossMax + LedgeMarginCm
+				&& Ball.Z < Box.Max.Z - 20.f && Ball.Z > Box.Min.Z + 25.f;
+			if (bOnTheFace && Gap <= FootWallReachCm)
+			{
+				WallWanted = Wall + Axis * (Gap - FootWallRadiusCm);
 			}
 		}
 		Applied = FMath::FInterpTo(Applied, Wanted, DeltaSeconds, FootLiftSpeed);
-		// The rig adds this offset to this frame's animated foot, so the foot keeps following the animation sideways.
-		Target = FTransform(FVector(0.f, 0.f, Applied));
+		Wall = FMath::VInterpConstantTo(Wall, WallWanted, DeltaSeconds, FootWallSpeed);
+		// The rig adds this offset to this frame's animated foot in component space (it reads the variable without converting it from
+		// the world), so the foot keeps following the animation otherwise: the world offset is turned into the mesh's space here.
+		Target = FTransform(Mesh->GetComponentTransform().InverseTransformVectorNoScale(FVector(Wall.X, Wall.Y, Applied)));
 	}
 	else
 	{
 		Applied = FMath::FInterpTo(Applied, 0.f, DeltaSeconds, FootLiftSpeed);
+		Wall = FMath::VInterpConstantTo(Wall, FVector::ZeroVector, DeltaSeconds, FootWallSpeed);
 		Target = FTransform::Identity;
 	}
-	Weight = FMath::Clamp(Applied / FullWeightLiftCm, 0.f, 1.f);
+	Weight = FMath::Clamp(FMath::Max(FMath::Abs(Applied), static_cast<float>(Wall.Size())) / FullWeightLiftCm, 0.f, 1.f);
 }

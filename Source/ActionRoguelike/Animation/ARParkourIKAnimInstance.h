@@ -18,6 +18,17 @@ class ACTIONROGUELIKE_API UARParkourIKAnimInstance : public UAnimInstance
 	GENERATED_BODY()
 
 public:
+	/**
+	 * Heights (cm) of the ankle joint (foot bone) and the ball joint above the sole when the foot stands flat on the ground. They turn the bone
+	 * heights into a sole height for the foot lift and plant. Measured per character: the mannequin 8.5 / 0.5, Paragon Wraith -0.4 / 3.8.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Foot")
+	float AnkleHeightCm = 8.5f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Foot")
+	float BallHeightCm = 0.5f;
+
+public:
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
 	/** World-space hand targets (location only; the rig keeps the animated hand rotation). */
@@ -62,6 +73,9 @@ private:
 
 	/** Lift (cm) applied to each foot last frame; the new lift is worked out from the pose it produced. */
 	float FootLiftCm[2] = {0.f, 0.f};
+
+	/** Horizontal offset (cm, world) applied to each foot last frame to put it against the wall face; see UpdateFoot. */
+	FVector FootWallCm[2] = {FVector::ZeroVector, FVector::ZeroVector};
 
 	void UpdateFoot(int32 Side, const class UARParkourIKComponent* IK, float DeltaSeconds);
 };

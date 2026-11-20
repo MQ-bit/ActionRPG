@@ -92,6 +92,13 @@ protected:
 
 	void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted, int32 PlaybackId);
 
+	/**
+	 * The montage has played to its last frame and starts to blend out (its blend-out trigger time is 0): the warp has put the capsule on
+	 * the target. While the character is still Flying the anim blueprint shows the in-air pose under the fading montage, and the feet
+	 * drop to the ground in one frame when the movement mode finally changes: switch to Walking now, finish the move at the montage end.
+	 */
+	void OnMontageBlendingOut(UAnimMontage* Montage, bool bInterrupted, int32 PlaybackId);
+
 	/** Arrival check and clean-up, one tick after the montage ended. */
 	void FinishMontageMove(int32 PlaybackId);
 
@@ -154,6 +161,9 @@ protected:
 
 private:
 	bool bMontageMove = false;
+
+	/** Flying braking of the character before the montage move; flying has none, so the last root-motion velocity would slide the capsule on. */
+	float SavedBrakingDecelerationFlying = 0.f;
 	int32 MontagePlaybackId = 0;
 	FVector MontageTarget = FVector::ZeroVector;
 	FVector SafeLocation = FVector::ZeroVector;

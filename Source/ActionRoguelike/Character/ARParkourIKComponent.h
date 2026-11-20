@@ -33,10 +33,16 @@ public:
 	void End();
 
 	/** The top the mantle ends on: the feet are kept above its surface (see UARParkourIKAnimInstance). */
-	void SetLedge(const UPrimitiveComponent* Top) { Ledge = Top; }
+	void SetLedge(const UPrimitiveComponent* Top, const FVector& InInward = FVector::ZeroVector) { Ledge = Top; Inward = InInward.GetSafeNormal2D(); }
 	const UPrimitiveComponent* GetLedge() const { return Ledge.Get(); }
 
+	/** The horizontal direction into the obstacle (its front face looks the other way); zero when unknown. */
+	const FVector& GetInward() const { return Inward; }
+
 	bool IsActive() const { return bActive; }
+
+	/** True while the montage is within its last WindowSeconds (its blend-out included): the feet may be planted on the ledge then. */
+	bool InFinalPhase(const UAnimInstance* MainAnimInstance, float WindowSeconds) const;
 
 	/** World target and IK weight (0..1) of a hand right now, read from the montage position of MainAnimInstance. */
 	void GetHand(int32 Side, const UAnimInstance* MainAnimInstance, FVector& OutWorldTarget, float& OutWeight) const;
@@ -44,6 +50,7 @@ public:
 private:
 	bool bActive = false;
 	TWeakObjectPtr<const UPrimitiveComponent> Ledge;
+	FVector Inward = FVector::ZeroVector;
 	TWeakObjectPtr<UAnimMontage> Montage;
 	float Ramp = 0.15f;
 	FVector Targets[2] = {FVector::ZeroVector, FVector::ZeroVector};
