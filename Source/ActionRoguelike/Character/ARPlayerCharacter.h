@@ -12,9 +12,11 @@ class UInputAction;
 class UInputMappingContext;
 class UAnimInstance;
 class UARParkourIKComponent;
+class UARLockOnComponent;
 class UMotionWarpingComponent;
 class UARHealthBarWidget;
 struct FInputActionValue;
+struct FGameplayTag;
 
 /** Third-person player: camera boom, Enhanced Input move/look. Assets are assigned in a data-only Blueprint. */
 UCLASS()
@@ -38,6 +40,9 @@ protected:
 	/** Press: parkour if an obstacle is in reach, else a jump. Release stops the jump. Ignored while attacking or vaulting. */
 	void OnJumpInput();
 
+	/** Toggles the lock-on. */
+	void OnLockOnInput();
+
 	/** Tries the parkour ability. */
 	bool TryParkour();
 
@@ -59,6 +64,10 @@ protected:
 	UFUNCTION(Exec)
 	void ARJump();
 
+	/** Console command `ARLock`: same path as the lock-on input, for testing without a mouse. */
+	UFUNCTION(Exec)
+	void ARLock();
+
 	/** Console command `ARAttack`: same path as the attack input, for testing without a mouse. */
 	UFUNCTION(Exec)
 	void ARAttack();
@@ -73,9 +82,26 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Parkour")
 	TObjectPtr<UMotionWarpingComponent> MotionWarping;
 
+	/**
+	 * Bones hidden on the mesh when the game starts (the bone and everything below it). For a mesh with parts built in that the game does
+	 * not want, e.g. a Paragon backpack cannon ("canon_base"). Set in the character's data-only Blueprint.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Mesh")
+	TArray<FName> HiddenBones;
+
+	/** Bones hidden only while State.Parkouring or State.Attacking is on (e.g. the rifle in the hand: those clips use the hands for something else). */
+	UPROPERTY(EditDefaultsOnly, Category = "Mesh")
+	TArray<FName> ActionHiddenBones;
+
+	void OnActionTagChanged(const FGameplayTag Tag, int32 Count);
+
 	/** Post-process anim blueprint with the hand IK (ABP_ParkourIK). Applied to this mesh only, the shared mannequin mesh asset stays untouched. */
 	UPROPERTY(EditDefaultsOnly, Category = "Parkour")
 	TSubclassOf<UAnimInstance> ParkourIKAnimClass;
+
+	/** Holds the lock-on target; rules in Core/ARLockOn.h. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "LockOn")
+	TObjectPtr<UARLockOnComponent> LockOn;
 
 	/** Hand targets for the mantle hand IK, read by the post-process anim instance. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Parkour")
@@ -95,6 +121,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputAction> JumpAction;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TObjectPtr<UInputAction> LockOnAction;
 
 	/** How long (s) a jump press made too far from a vaultable wall is kept: the character runs up to it, then the parkour starts. */
 	UPROPERTY(EditDefaultsOnly, Category = "Input", meta = (ClampMin = "0"))

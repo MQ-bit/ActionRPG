@@ -15,6 +15,7 @@
 #include "GAS/ARGameplayTags.h"
 #include "InputActionValue.h"
 #include "MotionWarpingComponent.h"
+#include "Character/ARLockOnComponent.h"
 #include "Character/ARParkourIKComponent.h"
 #include "UI/ARHealthBarWidget.h"
 
@@ -40,6 +41,7 @@ AARPlayerCharacter::AARPlayerCharacter()
 
 	MotionWarping = CreateDefaultSubobject<UMotionWarpingComponent>(TEXT("MotionWarping"));
 	ParkourIK = CreateDefaultSubobject<UARParkourIKComponent>(TEXT("ParkourIK"));
+	LockOn = CreateDefaultSubobject<UARLockOnComponent>(TEXT("LockOn"));
 }
 
 void AARPlayerCharacter::BeginPlay()
@@ -50,6 +52,14 @@ void AARPlayerCharacter::BeginPlay()
 	{
 		GetMesh()->SetOverridePostProcessAnimBP(ParkourIKAnimClass);
 	}
+
+	for (const FName Bone : HiddenBones)
+	{
+		GetMesh()->HideBoneByName(Bone, PBO_None);
+	}
+
+	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Parkouring.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnActionTagChanged);
+	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Attacking.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnActionTagChanged);
 
 	APlayerController* PC = Cast<APlayerController>(GetController());
 	if (!PC)
@@ -97,6 +107,10 @@ void AARPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		{
 			EIC->BindAction(AttackAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnAttackInput);
 		}
+		if (LockOnAction)
+		{
+			EIC->BindAction(LockOnAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnLockOnInput);
+		}
 		if (JumpAction)
 		{
 			EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnJumpInput);
@@ -121,8 +135,31 @@ void AARPlayerCharacter::Move(const FInputActionValue& Value)
 	AddMovementInput(FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y), Input.X);
 }
 
+void AARPlayerCharacter::OnActionTagChanged(const FGameplayTag /*Tag*/, int32 /*Count*/)
+{
+	const bool bHide = AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag())
+		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag());
+	for (const FName Bone : ActionHiddenBones)
+	{
+		if (bHide)
+		{
+			GetMesh()->HideBoneByName(Bone, PBO_None);
+		}
+		else
+		{
+			GetMesh()->UnHideBoneByName(Bone);
+		}
+	}
+}
+
 void AARPlayerCharacter::Look(const FInputActionValue& Value)
 {
+	// The controller follows the target while locked.
+	if (LockOn->IsLockedOn())
+	{
+		return;
+	}
+
 	const FVector2D Input = Value.Get<FVector2D>();
 
 	AddControllerYawInput(Input.X);
@@ -132,6 +169,11 @@ void AARPlayerCharacter::Look(const FInputActionValue& Value)
 void AARPlayerCharacter::OnAttackInput()
 {
 	AbilitySystemComponent->AbilityInputTagPressed(TAG_InputTag_Attack.GetTag());
+}
+
+void AARPlayerCharacter::OnLockOnInput()
+{
+	LockOn->Toggle();
 }
 
 void AARPlayerCharacter::OnJumpInput()
@@ -146,6 +188,8 @@ void AARPlayerCharacter::OnJumpInput()
 	// An obstacle in reach means parkour; otherwise it is a plain jump.
 	if (TryParkour())
 	{
+		// Parkour turns the body itself, so the lock-on steps aside (the component also lets go when it sees the parkour tag).
+		LockOn->Release();
 		ClearParkourBuffer();
 		return;
 	}
@@ -203,6 +247,11 @@ void AARPlayerCharacter::ARCancelAbilities()
 void AARPlayerCharacter::ARJump()
 {
 	OnJumpInput();
+}
+
+void AARPlayerCharacter::ARLock()
+{
+	OnLockOnInput();
 }
 
 void AARPlayerCharacter::ARAttack()

@@ -23,6 +23,10 @@ public:
 
 	UBehaviorTree* GetBehaviorTree() const { return BehaviorTree; }
 
+	/** Shows or hides the lock-on marker above the head. */
+	void SetLockedOn(bool bLocked);
+	bool IsLockedOn() const { return bLockedOn; }
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void OnDeath() override;
@@ -30,6 +34,12 @@ protected:
 	/** Health bar above the head. Without a widget class (set in the data-only Blueprint) it shows nothing. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	TObjectPtr<UWidgetComponent> HealthBarComponent;
+
+	/** Lock-on marker above the head, hidden until locked. The widget is UARLockOnMarkerWidget (built in code). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	TObjectPtr<UWidgetComponent> LockOnMarkerComponent;
+
+	bool bLockedOn = false;
 
 	UPROPERTY(EditDefaultsOnly, Category = "AI")
 	TObjectPtr<UBehaviorTree> BehaviorTree;

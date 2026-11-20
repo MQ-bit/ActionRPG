@@ -29,5 +29,9 @@ Plugins/*/Intermediate/
 # Fab Game Animation Sample clips: not for standalone redistribution, kept local
 /Content/Animations/Parkour/
 
+# Paragon Kallari (Fab, 2.2 GB, not for standalone redistribution): kept local
+/Content/ParagonKallari/
+/Content/ParagonWraith/
+
 # VS 2026 solution format
 *.slnx

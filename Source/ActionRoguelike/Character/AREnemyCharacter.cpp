@@ -7,6 +7,7 @@
 #include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "UI/ARHealthBarWidget.h"
+#include "UI/ARLockOnMarkerWidget.h"
 
 AAREnemyCharacter::AAREnemyCharacter()
 {
@@ -30,6 +31,20 @@ AAREnemyCharacter::AAREnemyCharacter()
 	HealthBarComponent->SetRelativeLocation(FVector(0.f, 0.f, 120.f));
 	HealthBarComponent->SetWidgetSpace(EWidgetSpace::Screen);
 	HealthBarComponent->SetDrawSize(FVector2D(100.f, 10.f));
+
+	LockOnMarkerComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("LockOnMarker"));
+	LockOnMarkerComponent->SetupAttachment(RootComponent);
+	LockOnMarkerComponent->SetRelativeLocation(FVector(0.f, 0.f, 160.f));
+	LockOnMarkerComponent->SetWidgetClass(UARLockOnMarkerWidget::StaticClass());
+	LockOnMarkerComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	LockOnMarkerComponent->SetDrawSize(FVector2D(40.f, 40.f));
+	LockOnMarkerComponent->SetVisibility(false);
+}
+
+void AAREnemyCharacter::SetLockedOn(bool bLocked)
+{
+	bLockedOn = bLocked;
+	LockOnMarkerComponent->SetVisibility(bLocked);
 }
 
 void AAREnemyCharacter::BeginPlay()
@@ -38,6 +53,7 @@ void AAREnemyCharacter::BeginPlay()
 
 	// The widget exists only if the Blueprint set a widget class on the component.
 	HealthBarComponent->InitWidget();
+	LockOnMarkerComponent->InitWidget();
 	if (UARHealthBarWidget* HealthBar = Cast<UARHealthBarWidget>(HealthBarComponent->GetUserWidgetObject()))
 	{
 		HealthBar->BindToCharacter(this);
@@ -47,6 +63,7 @@ void AAREnemyCharacter::BeginPlay()
 void AAREnemyCharacter::OnDeath()
 {
 	HealthBarComponent->SetVisibility(false);
+	SetLockedOn(false);
 
 	if (DeathLifeSpan > 0.f)
 	{
