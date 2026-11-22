@@ -152,9 +152,11 @@ void UARParkourIKAnimInstance::UpdateFoot(int32 Side, const UARParkourIKComponen
 			}
 		}
 
-		// Hanging on the ledge: the feet go against the wall face instead of dangling in front of (or inside) it.
+		// The feet go against the wall face instead of dangling in front of it (while a hand holds the ledge) and are never inside it (always:
+		// the leg swings up into the wall before a hand has reached the ledge).
 		const FVector Inward = IK->GetInward();
-		if (CVarFootWall.GetValueOnGameThread() != 0 && !Inward.IsNearlyZero() && FMath::Max(WeightL, WeightR) > FootWallHandWeight)
+		const bool bHandsHold = FMath::Max(WeightL, WeightR) > FootWallHandWeight;
+		if (CVarFootWall.GetValueOnGameThread() != 0 && !Inward.IsNearlyZero())
 		{
 			// The front face of the box: perpendicular to the dominant axis of the move direction.
 			const bool bAlongX = FMath::Abs(Inward.X) >= FMath::Abs(Inward.Y);
@@ -168,7 +170,7 @@ void UARParkourIKAnimInstance::UpdateFoot(int32 Side, const UARParkourIKComponen
 			const float Gap = static_cast<float>((FaceCoord - BallCoord) * (bAlongX ? FMath::Sign(Inward.X) : FMath::Sign(Inward.Y)));
 			const bool bOnTheFace = AcrossCoord >= AcrossMin - LedgeMarginCm && AcrossCoord <= AcrossMax + LedgeMarginCm
 				&& Ball.Z < Box.Max.Z - 20.f && Ball.Z > Box.Min.Z + 25.f;
-			if (bOnTheFace && Gap <= FootWallReachCm)
+			if (bOnTheFace && ((bHandsHold && Gap <= FootWallReachCm) || Gap < FootWallRadiusCm))
 			{
 				WallWanted = Wall + Axis * (Gap - FootWallRadiusCm);
 			}
