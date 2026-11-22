@@ -41,10 +41,8 @@ Content/Animations/Player/Wraith/AM_Attack_03_Wraith.uasset
 Content/Animations/Player/Wraith/MM_Attack_01_Wraith.uasset
 Content/Animations/Player/Wraith/MM_Attack_02_Wraith.uasset
 Content/Animations/Player/Wraith/MM_Attack_03_Wraith.uasset
-Content/Blueprints/Abilities/BP_GA_BasicAttack.uasset
 Content/Blueprints/Animation/ABP_ParkourIK_Kallari.uasset
 Content/Blueprints/Animation/ABP_ParkourIK_Wraith.uasset
-Content/Blueprints/Character/BP_PlayerCharacter.uasset
 Content/Characters/Kallari/Anims/ABP_Unarmed_Kallari.uasset
 Content/Characters/Kallari/Anims/BS_Idle_Walk_Run_Kallari.uasset
 Content/Characters/Kallari/Anims/BS_Idle_Walk_Run_Kallari1.uasset
@@ -81,3 +79,6 @@ Content/Characters/Wraith/Anims/MM_Jump_Wraith.uasset
 Content/Characters/Wraith/Anims/MM_Land_Wraith.uasset
 Content/Characters/Wraith/CR_Mannequin_FootIK_Wraith.uasset
 Content/Characters/Wraith/CR_Parkour_HandIK_Wraith.uasset
+
+# Third-party character pack (license unverified, 1.4 GB)
+Content/Survival_Character/
