@@ -171,4 +171,46 @@ bool FARParkourFootLiftTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourStartMatchTest, "ActionRoguelike.Parkour.StartMatch", AR_TEST_FLAGS)
+bool FARParkourStartMatchTest::RunTest(const FString& Parameters)
+{
+	using namespace ARParkour;
+	// A clip that accelerates: 0.0 s at 0 cm/s with 200 cm of approach left, 0.1 s at 150 with 120, 0.2 s at 300 with 40.
+	const TArray<FStartCandidate> Clip = {{0.0f, 200.f, 0.f}, {0.1f, 120.f, 150.f}, {0.2f, 40.f, 300.f}};
+
+	TestEqual(TEXT("empty list: nothing to start from"), ChooseStart({}, 100.f, 100.f), static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("standing, far from the wall: the start of the clip"), ChooseStart(Clip, 200.f, 0.f), 0);
+	TestEqual(TEXT("running, 40 cm left: the late candidate"), ChooseStart(Clip, 40.f, 300.f), 2);
+	TestEqual(TEXT("walking, 120 cm left: the middle one"), ChooseStart(Clip, 120.f, 150.f), 1);
+	// Speed and distance disagree: 100 cm to cover while running at 300 cm/s. Costs: candidate 0 = 16 + 9, candidate 1 = 0.64 + 2.25, candidate 2 = 5.76 + 0.
+	TestEqual(TEXT("both count: the middle candidate fits best"), ChooseStart(Clip, 100.f, 300.f), 1);
+	TestEqual(TEXT("first wins a tie"), ChooseStart({{0.f, 100.f, 100.f}, {0.1f, 100.f, 100.f}}, 100.f, 100.f), 0);
+
+	// The warp scales the root speed by needed / remaining: a clip that moves at 200 cm/s with 50 cm of approach left moves at 400 when 100 cm are needed.
+	float Cost = -1.f;
+	ChooseStart({{0.f, 50.f, 200.f}}, 100.f, 400.f, &Cost);
+	TestEqual(TEXT("the cost counts the distance error and the scaled speed"), Cost, 4.f, 0.001f);
+	// Backing away from the wall is worse than a clip that is slower than the character: 90 cm to the wall, the clip needs 120 of approach.
+	float Backing = 0.f;
+	float Slow = 0.f;
+	ChooseStart({{0.f, 30.f, 400.f}}, -30.f, 500.f, &Backing);
+	ChooseStart({{0.f, 30.f, 200.f}}, 18.f, 500.f, &Slow);
+	TestTrue(TEXT("backing away costs more than a slower clip"), Backing > Slow);
+
+	// The feet: two candidates that fit equally in distance and speed, the one whose feet are closer to the character's feet wins.
+	FStartCandidate A;
+	A.Time = 0.f;
+	A.Remaining = 100.f;
+	A.Speed = 100.f;
+	A.Feet = FVector4(30.0, 0.0, -30.0, 0.0);
+	A.bHasFeet = true;
+	FStartCandidate B = A;
+	B.Time = 0.1f;
+	B.Feet = FVector4(-30.0, 0.0, 30.0, 0.0);
+	const FVector4 Query(-25.0, 0.0, 25.0, 0.0);
+	TestEqual(TEXT("closer feet win"), ChooseStart({A, B}, 100.f, 100.f, nullptr, &Query), 1);
+	TestEqual(TEXT("no feet query: the first wins"), ChooseStart({A, B}, 100.f, 100.f), 0);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

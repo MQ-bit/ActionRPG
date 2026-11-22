@@ -209,7 +209,8 @@ bool FARParkourAbilityGapTest::RunTest(const FString& Parameters)
 	// Nothing to land on behind it: the obstacle is climbed onto, never vaulted over the gap.
 	TestTrue(TEXT("no vault onto air: the top is climbed onto instead"), F.TryParkour());
 	F.TickUntilDone();
-	TestEqual(TEXT("it ends on top of the obstacle, not over the gap"), F.Actor->GetActorLocation().X, 152.0, 8.0);
+	// The top is 55 cm deep, a capsule is wider than that: it stands in the middle of the top (x 100..155), not at its far edge.
+	TestEqual(TEXT("it ends in the middle of the obstacle, not over the gap"), F.Actor->GetActorLocation().X, 127.5, 8.0);
 	return true;
 }
 
@@ -247,6 +248,33 @@ bool FARParkourAbilityShapeTest::RunTest(const FString& Parameters)
 		FARParkourFixture F;
 		if (!F.Init(*this, 90.f, 30.f)) { return false; }
 		TestTrue(TEXT("a low narrow pillar can still be vaulted"), F.TryParkour());
+	}
+	// A top deeper than 1.5 capsule radii but too shallow for the capsule at the usual spot: the capsule stands in the middle of it.
+	{
+		FARParkourFixture F;
+		if (!F.Init(*this, 150.f, 70.f)) { return false; }
+		if (!TestTrue(TEXT("a 70 cm deep top is mantled"), F.TryParkour())) { return false; }
+		F.TickUntilDone(200);
+		// The top spans x 100..170, the capsule is wider than half of it: it ends in the middle.
+		TestEqual(TEXT("ends in the middle of the top"), F.Actor->GetActorLocation().X, 135.0, 6.0);
+	}
+	{
+		FARParkourFixture F;
+		if (!F.Init(*this, 150.f, 45.f)) { return false; }
+		TestFalse(TEXT("a 45 cm deep top is too shallow to stand on"), F.TryParkour());
+	}
+	// The same for the width: a 150 cm high block, 100 cm deep, in front of the character.
+	{
+		FARParkourFixture F;
+		if (!F.Init(*this, 0.f, 0.f)) { return false; }
+		F.AddBox(FVector(150.f, 0.f, 75.f), FVector(50.f, 20.f, 75.f));
+		TestFalse(TEXT("a block 40 cm wide is too narrow to stand on"), F.TryParkour());
+	}
+	{
+		FARParkourFixture F;
+		if (!F.Init(*this, 0.f, 0.f)) { return false; }
+		F.AddBox(FVector(150.f, 0.f, 75.f), FVector(50.f, 100.f, 75.f));
+		TestTrue(TEXT("a block 200 cm wide can be mantled"), F.TryParkour());
 	}
 	return true;
 }

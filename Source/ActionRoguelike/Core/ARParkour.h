@@ -78,6 +78,10 @@ namespace ARParkour
 	/** The vault clip (Hurdle_1_0) crosses about this much; a thicker obstacle is climbed onto instead (measured: 90 cm fails). */
 	constexpr float VaultMaxThickness = 59.f;
 	constexpr float MantleMaxHeight = 240.f;
+	/** A mantle needs a top at least this many capsule radii deep, or the capsule would hang over the far edge. */
+	constexpr float MantleMinTopDepthRadii = 1.25f;
+	/** The top must reach this many capsule radii to both sides of where the capsule ends (the capsule's body, not its whole width). */
+	constexpr float MantleSideSupportRadii = 0.6f;
 	constexpr float MaxWalkableSlopeDegrees = 30.f;
 	/** Capsule height of the player (2 x 96). The top surface needs this much free space. */
 	constexpr float RequiredClearance = 192.f;
@@ -140,6 +144,62 @@ namespace ARParkour
 	inline float FootLift(float AppliedLift, float SoleZ, float WantedZ, float MaxLift, float MinLift = 0.f)
 	{
 		return FMath::Clamp(AppliedLift + (WantedZ - SoleZ), MinLift, MaxLift);
+	}
+
+	/** One moment of a clip's approach the move could start from: the root travel left until the approach ends, and the root speed there. */
+	struct FStartCandidate
+	{
+		float Time = 0.f;
+		/** Horizontal root travel (cm) from this time to the end of the approach. */
+		float Remaining = 0.f;
+		/** Horizontal root speed (cm/s) at this time. */
+		float Speed = 0.f;
+		/** Feet relative to the capsule, in the move direction: left forward, left height above the floor, right forward, right height (cm). */
+		FVector4 Feet = FVector4(0.0, 0.0, 0.0, 0.0);
+		bool bHasFeet = false;
+	};
+
+	/** A difference of this many cm in a foot position counts as much as StartDistanceScaleCm in the approach distance. */
+	constexpr float StartFootScaleCm = 15.f;
+
+	/** An error of this many cm in the approach distance counts as much as an error of StartSpeedScale cm/s in speed. */
+	constexpr float StartDistanceScaleCm = 25.f;
+	constexpr float StartSpeedScale = 100.f;
+
+	/**
+	 * Index of the candidate to start the clip from, INDEX_NONE when empty. The approach warp scales the root travel of the approach by
+	 * NeededApproach / Remaining, so the capsule moves at Speed times that: the best candidate has a remaining approach close to the distance
+	 * the capsule has to cover now (little scaling) and moves at about the speed the character has now. A negative NeededApproach (the capsule
+	 * would have to back away from the wall) gives a negative speed, which fits no running character. OutCost is the cost of the best one.
+	 */
+	inline int32 ChooseStart(const TArray<FStartCandidate>& Candidates, float NeededApproach, float CurrentSpeed, float* OutCost = nullptr, const FVector4* QueryFeet = nullptr)
+	{
+		int32 Best = INDEX_NONE;
+		float BestCost = MAX_flt;
+		for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+		{
+			const FStartCandidate& Candidate = Candidates[Index];
+			const float Scale = Candidate.Remaining > 1.f ? NeededApproach / Candidate.Remaining : 1.f;
+			const float Distance = (NeededApproach - Candidate.Remaining) / StartDistanceScaleCm;
+			const float Speed = (CurrentSpeed - Candidate.Speed * Scale) / StartSpeedScale;
+			float Cost = Distance * Distance + Speed * Speed;
+			if (QueryFeet && Candidate.bHasFeet)
+			{
+				// The feet at the start of the move: the closer the clip's feet are to the character's feet now, the smaller the pop.
+				const FVector4 Diff = (*QueryFeet - Candidate.Feet) / StartFootScaleCm;
+				Cost += static_cast<float>(Diff.X * Diff.X + Diff.Y * Diff.Y + Diff.Z * Diff.Z + Diff.W * Diff.W);
+			}
+			if (Cost < BestCost)
+			{
+				Best = Index;
+				BestCost = Cost;
+			}
+		}
+		if (OutCost)
+		{
+			*OutCost = BestCost;
+		}
+		return Best;
 	}
 
 	/** Index of the rule for this move and height whose variant is closest to the wanted one (first wins a tie), or INDEX_NONE. */

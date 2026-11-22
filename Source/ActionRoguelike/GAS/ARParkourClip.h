@@ -96,6 +96,22 @@ struct FARParkourClip
 	float StartPosition = 0.f;
 
 	/**
+	 * Picks the start time when the move starts instead of using StartPosition: the moment of the approach (from the montage start to
+	 * ApproachEnd) whose remaining root travel fits the distance to the wall and whose root speed fits the character's speed now. Needs
+	 * ApproachEnd. ReferenceDistanceCm stays the distance for StartPosition; the one for the picked time is worked out from it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour")
+	bool bMatchStart = false;
+
+	/**
+	 * For the start match: where the montage has the feet every 1/30 s from time 0 to ApproachEnd, relative to the capsule in the move
+	 * direction: X left foot forward, Y left foot height above the floor, Z right foot forward, W right foot height (cm). Measured from a
+	 * playback by the tools (tmp clip_probe). Empty: the feet are not compared.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour")
+	TArray<FVector4> FootPose;
+
+	/**
 	 * Mantle only: when each hand is pulled onto the ledge edge, in montage time (s). Full pull from Start to End, easing in
 	 * and out over HandRamp. End <= Start leaves that hand to the animation.
 	 */

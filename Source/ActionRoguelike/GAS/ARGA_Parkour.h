@@ -81,6 +81,16 @@ protected:
 	/** The wall is more than the approach warp can absorb beyond the clip's reference distance. */
 	bool IsTooFar(const FProbeResult& Result, const FGameplayAbilityActorInfo* ActorInfo) const;
 
+	/**
+	 * Pose matching, small: the start time of the clip's approach (before ApproachEnd) whose remaining root travel and root speed fit the wall
+	 * distance and the speed now best (ARParkour::ChooseStart), with the reference distance for that start. False when the clip has no approach.
+	 */
+	bool MatchStart(const FARParkourClip& Clip, UAnimMontage* Montage, const FProbeResult& Result, const ACharacter* Character,
+		float& OutStart, float& OutReference, float& OutCost, float& OutFootError) const;
+
+	/** The clip of the same move and obstacle height (any speed variant) with a matched start whose match is cheapest; Index when none is better. */
+	int32 BestMatchedClip(const FProbeResult& Result, const ACharacter* Character, int32 Index) const;
+
 	/** Plays the matching montage with a warp target; false (and nothing changed) when there is none or it cannot play. */
 	bool TryStartMontage(const FProbeResult& Result);
 
