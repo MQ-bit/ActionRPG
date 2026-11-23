@@ -34,6 +34,8 @@ namespace
 	/** Feet within this distance of the wall face (and below the top) are put against it, at FootWallRadiusCm from the face (the ball joint is about that far above the sole). */
 	constexpr float FootWallReachCm = 60.f;
 	constexpr float FootWallRadiusCm = 6.f;
+	/** The ankle joint is this far from the wall face when the foot is against it (cm): the ankle is about as high as the calf is thick. */
+	constexpr float FootWallAnkleRadiusCm = 9.f;
 	/** cm per second (a constant speed: a rate-style interpolation with a speed this high moves the whole way in one frame, a pop of 40 cm). */
 	constexpr float FootWallSpeed = 150.f;
 	/** The feet only go to the wall while a hand holds the ledge with at least this weight. */
@@ -163,16 +165,30 @@ void UARParkourIKAnimInstance::UpdateFoot(int32 Side, const UARParkourIKComponen
 			const double FaceCoord = bAlongX ? (Inward.X > 0.0 ? Box.Min.X : Box.Max.X) : (Inward.Y > 0.0 ? Box.Min.Y : Box.Max.Y);
 			const FVector Axis = bAlongX ? FVector(FMath::Sign(Inward.X), 0.0, 0.0) : FVector(0.0, FMath::Sign(Inward.Y), 0.0);
 			const double BallCoord = bAlongX ? Ball.X : Ball.Y;
+			const double AnkleCoord = bAlongX ? Foot.X : Foot.Y;
 			const double AcrossCoord = bAlongX ? Ball.Y : Ball.X;
 			const double AcrossMin = bAlongX ? Box.Min.Y : Box.Min.X;
 			const double AcrossMax = bAlongX ? Box.Max.Y : Box.Max.X;
 			// Gap between the ball joint and the face along the move direction: positive = in front of the wall, negative = inside it.
-			const float Gap = static_cast<float>((FaceCoord - BallCoord) * (bAlongX ? FMath::Sign(Inward.X) : FMath::Sign(Inward.Y)));
-			const bool bOnTheFace = AcrossCoord >= AcrossMin - LedgeMarginCm && AcrossCoord <= AcrossMax + LedgeMarginCm
+			const double Direction = bAlongX ? FMath::Sign(Inward.X) : FMath::Sign(Inward.Y);
+			const float GapBall = static_cast<float>((FaceCoord - BallCoord) * Direction);
+			// The ankle is thicker than the ball joint: the foot stands against the wall by whichever of the two is nearer to it.
+			const float GapAnkle = static_cast<float>((FaceCoord - AnkleCoord) * Direction) - (FootWallAnkleRadiusCm - FootWallRadiusCm);
+			const float Gap = FMath::Min(GapBall, GapAnkle);
+			// A foot that has gone past the back face (the landing of a vault) is behind the obstacle, not in front of or inside it.
+			const double BackCoord = bAlongX ? (Inward.X > 0.0 ? Box.Max.X : Box.Min.X) : (Inward.Y > 0.0 ? Box.Max.Y : Box.Min.Y);
+			const bool bBeforeBack = (BackCoord - BallCoord) * Direction > 0.0;
+			const bool bOnTheFace = bBeforeBack && AcrossCoord >= AcrossMin - LedgeMarginCm && AcrossCoord <= AcrossMax + LedgeMarginCm
 				&& Ball.Z < Box.Max.Z - 20.f && Ball.Z > Box.Min.Z + 25.f;
 			if (bOnTheFace && ((bHandsHold && Gap <= FootWallReachCm) || Gap < FootWallRadiusCm))
 			{
 				WallWanted = Wall + Axis * (Gap - FootWallRadiusCm);
+				// A foot in the wall comes out at once (a swinging leg is in it for only a few frames, the speed limit below would be too slow);
+				// only the pull towards the wall is smoothed.
+				if (Gap < FootWallRadiusCm)
+				{
+					Wall = WallWanted;
+				}
 			}
 		}
 		Applied = FMath::FInterpTo(Applied, Wanted, DeltaSeconds, FootLiftSpeed);
