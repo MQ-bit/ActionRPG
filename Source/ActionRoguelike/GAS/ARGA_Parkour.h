@@ -65,6 +65,8 @@ protected:
 		float HalfHeight = 0.f;
 		/** Distance from the capsule centre to the wall surface, along the move direction. */
 		float WallDistance = 0.f;
+		/** Mantle: how deep the top is behind the front edge, measured as far as the capsule needs (cm); 0 for a vault. */
+		float TopDepth = 0.f;
 		TWeakObjectPtr<AActor> Obstacle;
 		/** The obstacle's front top edge at the point the probe hit, the direction into it, and the component that has the top. */
 		FVector FrontEdgePoint = FVector::ZeroVector;
@@ -117,6 +119,13 @@ protected:
 
 	/** Inset shrinks the capsule (cm), so touching a surface does not count as overlapping it. */
 	bool CapsuleBlockedAt(const FVector& Location, float Inset = 0.f) const;
+
+	/** Ends the move early when the clip allows it, the player holds a direction and the capsule is on the target (ARParkour::MoveCancelAllowed). */
+	void CheckMoveCancel();
+
+	FTimerHandle MoveCancelTimer;
+	TWeakObjectPtr<UAnimMontage> ActiveMontage;
+	float ActiveMoveCancelFrom = 0.f;
 
 	/** Undoes everything TryStartMontage set up. Safe to call twice. */
 	void CleanUpMontageMove(bool bArrived);

@@ -171,6 +171,19 @@ bool FARParkourFootLiftTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourMoveCancelTest, "ActionRoguelike.Parkour.MoveCancel", AR_TEST_FLAGS)
+bool FARParkourMoveCancelTest::RunTest(const FString& Parameters)
+{
+	using namespace ARParkour;
+	TestTrue(TEXT("after the cancel time, input held, on the target"), MoveCancelAllowed(1.2f, 1.0f, true, 2.f));
+	TestFalse(TEXT("a clip without a cancel time always plays out"), MoveCancelAllowed(1.2f, 0.f, true, 2.f));
+	TestFalse(TEXT("too early in the clip"), MoveCancelAllowed(0.8f, 1.0f, true, 2.f));
+	TestFalse(TEXT("no input: the clip goes on"), MoveCancelAllowed(1.2f, 1.0f, false, 2.f));
+	TestFalse(TEXT("not on the target yet: no pop"), MoveCancelAllowed(1.2f, 1.0f, true, MoveCancelArrivalCm + 1.f));
+	TestTrue(TEXT("exactly at the cancel time"), MoveCancelAllowed(1.0f, 1.0f, true, MoveCancelArrivalCm));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourStartMatchTest, "ActionRoguelike.Parkour.StartMatch", AR_TEST_FLAGS)
 bool FARParkourStartMatchTest::RunTest(const FString& Parameters)
 {

@@ -95,6 +95,17 @@ struct FARParkourClip
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour", meta = (ClampMin = "0"))
 	float StartPosition = 0.f;
 
+	/** Playback speed of the montage (1 = as made). The warp windows are in montage time and scale with it; the root travel does not change. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour", meta = (ClampMin = "0.1", ClampMax = "3"))
+	float PlayRate = 1.f;
+
+	/**
+	 * Montage time (s) from which a movement input ends the move early: the montage blends out and the character walks on. Only once the
+	 * capsule is on the target, so nothing pops. 0 = the clip always plays to its end.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour", meta = (ClampMin = "0"))
+	float MoveCancelFrom = 0.f;
+
 	/**
 	 * Picks the start time when the move starts instead of using StartPosition: the moment of the approach (from the montage start to
 	 * ApproachEnd) whose remaining root travel fits the distance to the wall and whose root speed fits the character's speed now. Needs

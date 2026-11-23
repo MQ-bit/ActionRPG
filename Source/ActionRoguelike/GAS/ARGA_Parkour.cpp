@@ -15,6 +15,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "GAS/ARAbilityTask_ParkourMove.h"
 #include "GAS/ARGameplayTags.h"
+#include "Character/ARPlayerCharacter.h"
 
 namespace
 {
@@ -25,6 +26,10 @@ namespace
 	constexpr float ClearanceProbeLength = 400.f;
 	/** A matched start leaves at least this much of the approach to play (s). */
 	constexpr float MinMatchedApproachSeconds = 0.05f;
+	/** The top depth is measured this far beyond what the capsule needs at the usual spot, so a clip can move its landing inward (cm). */
+	constexpr float MantleDepthScanExtraCm = 40.f;
+	/** The blend-out of a clip that ends early because the player moves (s). */
+	constexpr float MoveCancelBlendSeconds = 0.25f;
 	TAutoConsoleVariable<int32> CVarMatchFeet(TEXT("ar.Parkour.MatchFeet"), 1, TEXT("1 compares the feet with the clip's feet when picking the start of a matched parkour move, 0 leaves them out."));
 	/** Obstacles deeper than this count as "very thick"; only the vault limit (75) matters. */
 	constexpr float MaxThicknessProbe = 400.f;
@@ -140,7 +145,7 @@ bool UARGA_Parkour::MatchStart(const FARParkourClip& Clip, UAnimMontage* Montage
 		ARParkour::FStartCandidate Candidate;
 		Candidate.Time = Time;
 		Candidate.Remaining = Travel(Time, Clip.ApproachEnd);
-		Candidate.Speed = Travel(Time, Time + Step) / Step;
+		Candidate.Speed = Travel(Time, Time + Step) / Step * Clip.PlayRate;
 		if (Clip.FootPose.IsValidIndex(Frame))
 		{
 			Candidate.Feet = Clip.FootPose[Frame];
@@ -308,14 +313,17 @@ bool UARGA_Parkour::PlayClip(const FProbeResult& Result, int32 Index)
 		const FVector Up(0.f, 0.f, Result.HalfHeight);
 		const bool bSupported = Character->GetWorld()->LineTraceSingleByChannel(Support, Shifted + Up, Shifted - Up - FVector(0.f, 0.f, 20.f), ECC_Visibility, FCollisionQueryParams(SCENE_QUERY_STAT(ARParkourLanding), false, Character))
 			&& Support.ImpactNormal.Z >= 0.7f && FMath::Abs(Support.ImpactPoint.Z + Result.HalfHeight - Landing.Z) <= 12.f;
-		if (bSupported && !CapsuleBlockedAt(Shifted))
+		// On a mantle top the moved capsule must still fit on the top: its far side stays on it.
+		const bool bFitsTop = Result.Move != ARParkour::EMove::Mantle
+			|| FVector::DotProduct(Shifted - Result.FrontEdgePoint, Result.Inward.GetSafeNormal2D()) + Character->GetCapsuleComponent()->GetScaledCapsuleRadius() <= Result.TopDepth;
+		if (bSupported && bFitsTop && !CapsuleBlockedAt(Shifted))
 		{
 			Landing = Shifted;
 		}
 	}
 	// The warp target is where the feet end up (the warp notify warps to the feet location).
 	Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::WarpTargetName(), Landing - FVector(0.f, 0.f, Result.HalfHeight - Clip.WarpOffsetZCm), Result.Facing);
-	if (ASC->PlayMontage(this, CurrentActivationInfo, Montage, 1.f, NAME_None, StartPosition) <= 0.f)
+	if (ASC->PlayMontage(this, CurrentActivationInfo, Montage, Clip.PlayRate, NAME_None, StartPosition) <= 0.f)
 	{
 		// Could not start: nothing else has been touched yet, so the interpolated move can take over.
 		Warp->RemoveWarpTarget(ARParkour::WarpTargetName());
@@ -352,6 +360,12 @@ bool UARGA_Parkour::PlayClip(const FProbeResult& Result, int32 Index)
 	BeginHandIK(Result, Clips[Index], Montage, Character);
 
 	Character->GetWorld()->GetTimerManager().SetTimer(SafeLocationTimer, this, &UARGA_Parkour::SampleSafeLocation, 1.f / 30.f, true);
+	ActiveMontage = Montage;
+	ActiveMoveCancelFrom = Clip.MoveCancelFrom;
+	if (Clip.MoveCancelFrom > 0.f)
+	{
+		Character->GetWorld()->GetTimerManager().SetTimer(MoveCancelTimer, this, &UARGA_Parkour::CheckMoveCancel, 1.f / 30.f, true);
+	}
 	return true;
 }
 
@@ -427,6 +441,30 @@ void UARGA_Parkour::FinishMontageMove(int32 PlaybackId)
 		GetAvatarActorFromActorInfo()->SetActorLocation(MontageTarget, false, nullptr, ETeleportType::TeleportPhysics);
 	}
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, !bArrived);
+}
+
+void UARGA_Parkour::CheckMoveCancel()
+{
+	const AARPlayerCharacter* Player = Cast<AARPlayerCharacter>(GetAvatarActorFromActorInfo());
+	UAnimInstance* AnimInstance = CurrentActorInfo ? CurrentActorInfo->GetAnimInstance() : nullptr;
+	UAnimMontage* Montage = ActiveMontage.Get();
+	if (!bMontageMove || !IsActive() || !Player || !AnimInstance || !Montage || !AnimInstance->Montage_IsPlaying(Montage))
+	{
+		return;
+	}
+	const float Distance = static_cast<float>(FVector::Dist(Player->GetActorLocation(), MontageTarget));
+	if (!ARParkour::MoveCancelAllowed(AnimInstance->Montage_GetPosition(Montage), ActiveMoveCancelFrom, Player->IsMoveInputHeld(), Distance))
+	{
+		return;
+	}
+
+	UE_LOG(LogAR, Verbose, TEXT("[Parkour] %s: movement input at %.2f s, %.1f cm from the target -> the move ends early"), *GetNameSafe(Player), AnimInstance->Montage_GetPosition(Montage), Distance);
+	// The capsule is on the target: blend the rest of the clip out and give the character back (the cleanup in EndAbility stands it on the target).
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo())
+	{
+		ASC->CurrentMontageStop(MoveCancelBlendSeconds);
+	}
+	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 }
 
 void UARGA_Parkour::SampleSafeLocation()
@@ -594,7 +632,9 @@ void UARGA_Parkour::CleanUpMontageMove(bool bArrived)
 	if (UWorld* World = Character->GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(SafeLocationTimer);
+		World->GetTimerManager().ClearTimer(MoveCancelTimer);
 	}
+	ActiveMontage.Reset();
 
 	// Cut short: stop the montage first so no root motion is left to move the capsule, then leave any geometry it is inside.
 	if (!bArrived)
@@ -775,6 +815,7 @@ bool UARGA_Parkour::Probe(const FGameplayAbilityActorInfo* ActorInfo, FProbeResu
 	// 4) Where the capsule ends up; the spot must be free.
 	FVector Target;
 	float ApexZ;
+	float MantleTopDepth = 0.f;
 	switch (Move)
 	{
 	case ARParkour::EMove::Vault:
@@ -788,7 +829,7 @@ bool UARGA_Parkour::Probe(const FGameplayAbilityActorInfo* ActorInfo, FProbeResu
 		const float FullInset = Radius + 10.f;
 		float TopDepth = 0.f;
 		float LastZ = TopZ;
-		for (float Step = 2.5f; Step <= FullInset + Radius + 2.5f; Step += 2.5f)
+		for (float Step = 2.5f; Step <= FullInset + Radius + MantleDepthScanExtraCm; Step += 2.5f)
 		{
 			const FVector At = Wall.ImpactPoint + Forward * Step;
 			FHitResult Sample;
@@ -807,6 +848,7 @@ bool UARGA_Parkour::Probe(const FGameplayAbilityActorInfo* ActorInfo, FProbeResu
 			return false;
 		}
 		const float Inset = TopDepth >= FullInset + Radius ? FullInset : TopDepth * 0.5f;
+		MantleTopDepth = TopDepth;
 
 		// The capsule centre must stand on this obstacle: a narrow pillar or the far side of a slope has no support here.
 		const FVector Spot = Wall.ImpactPoint + Forward * Inset;
@@ -853,5 +895,6 @@ bool UARGA_Parkour::Probe(const FGameplayAbilityActorInfo* ActorInfo, FProbeResu
 	Out.ObstacleComponent = Wall.GetComponent();
 	Out.Facing = FRotator(0.f, (-Wall.ImpactNormal).Rotation().Yaw, 0.f);
 	Out.WallDistance = static_cast<float>(FVector::DotProduct(Wall.ImpactPoint - Origin, Forward));
+	Out.TopDepth = MantleTopDepth;
 	return true;
 }

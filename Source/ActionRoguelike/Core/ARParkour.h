@@ -202,6 +202,15 @@ namespace ARParkour
 		return Best;
 	}
 
+	/** The capsule must be this close to the move's target (cm) for the player's input to end the move early. */
+	constexpr float MoveCancelArrivalCm = 6.f;
+
+	/** Whether movement input may end a clip early: the clip has a cancel time, it has been reached, the player holds a direction and the capsule is on the target. */
+	inline bool MoveCancelAllowed(float MontagePosition, float CancelFrom, bool bInputHeld, float DistanceToTarget)
+	{
+		return CancelFrom > 0.f && MontagePosition >= CancelFrom && bInputHeld && DistanceToTarget <= MoveCancelArrivalCm;
+	}
+
 	/** Index of the rule for this move and height whose variant is closest to the wanted one (first wins a tie), or INDEX_NONE. */
 	inline int32 PickClip(const TArray<FClipRule>& Rules, EMove Move, float Height, EVariant Variant)
 	{
