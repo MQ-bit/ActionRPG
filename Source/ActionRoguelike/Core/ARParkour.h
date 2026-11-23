@@ -77,7 +77,8 @@ namespace ARParkour
 	constexpr float VaultMaxHeight = 95.f;
 	/** The vault clip (Hurdle_1_0) crosses about this much; a thicker obstacle is climbed onto instead (measured: 90 cm fails). */
 	constexpr float VaultMaxThickness = 59.f;
-	constexpr float MantleMaxHeight = 240.f;
+	/** The tallest mantle: the step-up clip (Mantle_1_0, authored for about 1 m) is used up to a 2 m block; the climbing clips for taller walls were dropped, a taller wall is a plain jump. */
+	constexpr float MantleMaxHeight = 205.f;
 	/** A mantle needs a top at least this many capsule radii deep, or the capsule would hang over the far edge. */
 	constexpr float MantleMinTopDepthRadii = 1.25f;
 	/** The top must reach this many capsule radii to both sides of where the capsule ends (the capsule's body, not its whole width). */

@@ -45,8 +45,9 @@ bool FARParkourMantleTest::RunTest(const FString& Parameters)
 	using ARParkour::EMove;
 	TestTrue(TEXT("just above the vault limit mantles"), ARParkour::Classify(Wall(96.f)) == EMove::Mantle);
 	TestTrue(TEXT("height 200 mantles"), ARParkour::Classify(Wall(200.f)) == EMove::Mantle);
-	TestTrue(TEXT("height 240 is the highest mantle"), ARParkour::Classify(Wall(240.f)) == EMove::Mantle);
-	TestTrue(TEXT("height 241 is too high"), ARParkour::Classify(Wall(241.f)) == EMove::None);
+	TestTrue(TEXT("height 205 is the highest mantle"), ARParkour::Classify(Wall(205.f)) == EMove::Mantle);
+	TestTrue(TEXT("height 206 is too high"), ARParkour::Classify(Wall(206.f)) == EMove::None);
+	TestTrue(TEXT("a 240 cm wall is a plain jump"), ARParkour::Classify(Wall(240.f)) == EMove::None);
 	TestTrue(TEXT("a thick block can be mantled"), ARParkour::Classify(Wall(200.f, 600.f)) == EMove::Mantle);
 
 	ARParkour::FObstacle NoLanding = Wall(200.f);
