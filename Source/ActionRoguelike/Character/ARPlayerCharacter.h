@@ -27,6 +27,17 @@ class ACTIONROGUELIKE_API AARPlayerCharacter : public AARCharacterBase
 public:
 	AARPlayerCharacter();
 
+	/** Remembers a movement input (the key or stick state) with its time; Move calls it even when the input is not applied. Also an exec command for tests. */
+	UFUNCTION(Exec)
+	void ARMoveInput(float X, float Y);
+
+	/** A movement input was given in the last 0.15 s: the player wants to go somewhere (also while the input is ignored for a parkour move). */
+	bool IsMoveInputHeld() const;
+
+	/** Walk (WalkSpeed) while true, the movement component's own speed (the jog) otherwise. Held with WalkAction. */
+	void SetWalking(bool bWalk);
+	bool IsWalking() const { return bWalking; }
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
@@ -45,6 +56,13 @@ protected:
 
 	/** Tries the parkour ability. */
 	bool TryParkour();
+
+	FVector2D LastMoveInput = FVector2D::ZeroVector;
+	double LastMoveInputTime = -1000.0;
+
+	/** The speed the movement component had when play began (the jog), restored when the walk input is released. */
+	float RunSpeed = 0.f;
+	bool bWalking = false;
 
 	/** A running character pressed jump with a wall ahead that is still too far for the parkour clip. */
 	bool ShouldBufferParkour() const;
@@ -124,6 +142,14 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputAction> LockOnAction;
+
+	/** Held to walk instead of jog. */
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TObjectPtr<UInputAction> WalkAction;
+
+	/** Speed while walking (cm/s): the walk row of the movement blend space is made for 300. */
+	UPROPERTY(EditDefaultsOnly, Category = "Movement", meta = (ClampMin = "0"))
+	float WalkSpeed = 300.f;
 
 	/** How long (s) a jump press made too far from a vaultable wall is kept: the character runs up to it, then the parkour starts. */
 	UPROPERTY(EditDefaultsOnly, Category = "Input", meta = (ClampMin = "0"))

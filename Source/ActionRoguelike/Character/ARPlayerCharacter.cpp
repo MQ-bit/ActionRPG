@@ -44,6 +44,19 @@ AARPlayerCharacter::AARPlayerCharacter()
 	LockOn = CreateDefaultSubobject<UARLockOnComponent>(TEXT("LockOn"));
 }
 
+void AARPlayerCharacter::SetWalking(bool bWalk)
+{
+	bWalking = bWalk;
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		if (RunSpeed <= 0.f)
+		{
+			RunSpeed = Movement->MaxWalkSpeed;
+		}
+		Movement->MaxWalkSpeed = bWalk ? WalkSpeed : RunSpeed;
+	}
+}
+
 void AARPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -111,6 +124,11 @@ void AARPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		{
 			EIC->BindAction(LockOnAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnLockOnInput);
 		}
+		if (WalkAction)
+		{
+			EIC->BindAction(WalkAction, ETriggerEvent::Started, this, &AARPlayerCharacter::SetWalking, true);
+			EIC->BindAction(WalkAction, ETriggerEvent::Completed, this, &AARPlayerCharacter::SetWalking, false);
+		}
 		if (JumpAction)
 		{
 			EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnJumpInput);
@@ -119,8 +137,22 @@ void AARPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 	}
 }
 
+void AARPlayerCharacter::ARMoveInput(float X, float Y)
+{
+	LastMoveInput = FVector2D(X, Y);
+	LastMoveInputTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+}
+
+bool AARPlayerCharacter::IsMoveInputHeld() const
+{
+	return GetWorld() && LastMoveInput.SizeSquared() > 0.04 && GetWorld()->GetTimeSeconds() - LastMoveInputTime < 0.15;
+}
+
 void AARPlayerCharacter::Move(const FInputActionValue& Value)
 {
+	const FVector2D Raw = Value.Get<FVector2D>();
+	ARMoveInput(Raw.X, Raw.Y);
+
 	// The attack montage animates the whole body, so moving during it looks like sliding.
 	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag())
 		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag()))
