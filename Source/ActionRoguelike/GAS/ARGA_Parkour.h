@@ -135,7 +135,7 @@ protected:
 	void EndHandIK();
 
 	/** Camera boom without collision and with lag for the length of the move; EndCameraOverride restores the old values. */
-	void BeginCameraOverride(AActor* Avatar);
+	void BeginCameraOverride(AActor* Avatar, float RaiseCm = 0.f);
 	void EndCameraOverride();
 	void TryRestoreCameraCollision();
 
@@ -178,6 +178,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Camera", meta = (ClampMin = "0"))
 	float CameraLagSpeed = 12.f;
 
+	/**
+	 * A mantle raises the camera pivot by this much for the move (cm, smoothed by the camera lag, back down at the end). A camera behind the
+	 * wall at the height of the top has the block's edge in front of the legs while the character crawls over it.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Camera", meta = (ClampMin = "0"))
+	float MantleCameraRaiseCm = 60.f;
+
 private:
 	bool bMontageMove = false;
 
@@ -193,6 +200,8 @@ private:
 
 	/** The collision test is switched back on after this long at the latest, if the camera's spot never clears (s). */
 	static constexpr float MaxCameraRestoreSeconds = 10.f;
+	/** The camera lag and collision test come back no sooner than this after the move: the camera needs it to glide back from a raised pivot (s). */
+	static constexpr float MinCameraRestoreSeconds = 0.5f;
 
 	FTimerHandle CameraRestoreTimer;
 	float CameraRestoreElapsed = 0.f;
@@ -200,4 +209,5 @@ private:
 	bool bSavedCollisionTest = true;
 	bool bSavedCameraLag = false;
 	float SavedLagSpeed = 10.f;
+	FVector SavedTargetOffset = FVector::ZeroVector;
 };

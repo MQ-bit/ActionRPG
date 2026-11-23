@@ -104,7 +104,7 @@ void UARGA_Parkour::ActivateAbility(const FGameplayAbilitySpecHandle Handle, con
 
 	AActor* Avatar = GetAvatarActorFromActorInfo();
 	Avatar->SetActorRotation(Result.Facing);
-	BeginCameraOverride(Avatar);
+	BeginCameraOverride(Avatar, Result.Move == ARParkour::EMove::Mantle ? MantleCameraRaiseCm : 0.f);
 
 	if (!TryStartMontage(Result))
 	{
@@ -548,7 +548,7 @@ void UARGA_Parkour::EndHandIK()
 	HandIKComponent.Reset();
 }
 
-void UARGA_Parkour::BeginCameraOverride(AActor* Avatar)
+void UARGA_Parkour::BeginCameraOverride(AActor* Avatar, float RaiseCm)
 {
 	USpringArmComponent* Boom = Avatar ? Avatar->FindComponentByClass<USpringArmComponent>() : nullptr;
 	if (!Boom)
@@ -562,12 +562,15 @@ void UARGA_Parkour::BeginCameraOverride(AActor* Avatar)
 		bSavedCollisionTest = Boom->bDoCollisionTest;
 		bSavedCameraLag = Boom->bEnableCameraLag;
 		SavedLagSpeed = Boom->CameraLagSpeed;
+		SavedTargetOffset = Boom->TargetOffset;
 	}
 	Boom->GetWorld()->GetTimerManager().ClearTimer(CameraRestoreTimer);
 
 	Boom->bDoCollisionTest = false;
 	Boom->bEnableCameraLag = true;
 	Boom->CameraLagSpeed = CameraLagSpeed;
+	// The lag smooths the offset like any movement of the pivot: the camera glides up and back.
+	Boom->TargetOffset = SavedTargetOffset + FVector(0.f, 0.f, RaiseCm);
 }
 
 void UARGA_Parkour::EndCameraOverride()
@@ -582,8 +585,8 @@ void UARGA_Parkour::EndCameraOverride()
 	// The lag was for the move. The collision test comes back once the camera's spot is free of geometry: right after a vault
 	// the player stands just behind the wall and the camera belongs on its other side, so restoring it at once would pull
 	// the camera in to a few cm from the character.
-	Boom->bEnableCameraLag = bSavedCameraLag;
-	Boom->CameraLagSpeed = SavedLagSpeed;
+	// The lag stays on until the camera has glided back (it is restored with the collision test, below).
+	Boom->TargetOffset = SavedTargetOffset;
 	CameraRestoreElapsed = 0.f;
 	Boom->GetWorld()->GetTimerManager().SetTimer(CameraRestoreTimer, this, &UARGA_Parkour::TryRestoreCameraCollision, 0.1f, true);
 }
@@ -606,8 +609,10 @@ void UARGA_Parkour::TryRestoreCameraCollision()
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(ARParkourCamera), false, Boom->GetOwner());
 	const bool bBlocked = World->SweepSingleByChannel(Hit, Pivot, Desired, FQuat::Identity, Boom->ProbeChannel,
 		FCollisionShape::MakeSphere(Boom->ProbeSize), Params);
-	if (!bBlocked || CameraRestoreElapsed >= MaxCameraRestoreSeconds)
+	if ((!bBlocked || CameraRestoreElapsed >= MaxCameraRestoreSeconds) && CameraRestoreElapsed >= MinCameraRestoreSeconds)
 	{
+		Boom->bEnableCameraLag = bSavedCameraLag;
+		Boom->CameraLagSpeed = SavedLagSpeed;
 		UE_LOG(LogAR, Verbose, TEXT("[Parkour] camera collision restored after %.1f s (%s)"), CameraRestoreElapsed, bBlocked ? TEXT("time limit") : TEXT("path clear"));
 		Boom->bDoCollisionTest = bSavedCollisionTest;
 		OverriddenBoom.Reset();
