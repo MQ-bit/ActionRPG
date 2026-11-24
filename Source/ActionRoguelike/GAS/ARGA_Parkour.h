@@ -123,6 +123,23 @@ protected:
 	/** Ends the move early when the clip allows it, the player holds a direction and the capsule is on the target (ARParkour::MoveCancelAllowed). */
 	void CheckMoveCancel();
 
+	/** Starts the camera override and the montage (or the interpolated move) from a probe. */
+	void BeginMove(const FProbeResult& Result);
+
+	/** ar.Parkour.CloseWall 2: a tall mantle too close to the wall first steps the capsule back, then starts the move from a fresh probe. */
+	void BeginStepBack(const FProbeResult& Result);
+	void StepBackTick();
+	/** Gives the character back what the step back changed (turn to the movement, walk speed, input). */
+	void EndStepBack();
+	FTimerHandle StepBackTimer;
+	FVector StepBackDirection = FVector::ZeroVector;
+	FVector StepBackFrom = FVector::ZeroVector;
+	float StepBackTotal = 0.f;
+	float SavedMaxWalkSpeed = 0.f;
+	bool bSavedOrientToMovement = false;
+	bool bStepBackActive = false;
+	int32 StepBackTicks = 0;
+
 	FTimerHandle MoveCancelTimer;
 	TWeakObjectPtr<UAnimMontage> ActiveMontage;
 	float ActiveMoveCancelFrom = 0.f;

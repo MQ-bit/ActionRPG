@@ -39,15 +39,44 @@ bool FARParkourVaultTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourBoxDistanceTest, "ActionRoguelike.Parkour.BoxDistance", AR_TEST_FLAGS)
+bool FARParkourBoxDistanceTest::RunTest(const FString& Parameters)
+{
+	const FBox Box(FVector(0.f, 0.f, 0.f), FVector(100.f, 100.f, 100.f));
+	FVector N;
+	TestEqual(TEXT("10 cm in front of the -X face"), ARParkour::BoxSignedDistance(FVector(-10.f, 50.f, 50.f), Box, N), 10.f);
+	TestTrue(TEXT("normal points away from the face"), N.Equals(FVector(-1.f, 0.f, 0.f)));
+	TestEqual(TEXT("10 cm above the top"), ARParkour::BoxSignedDistance(FVector(50.f, 50.f, 110.f), Box, N), 10.f);
+	TestTrue(TEXT("normal up"), N.Equals(FVector(0.f, 0.f, 1.f)));
+	TestEqual(TEXT("3 cm inside the top: negative, out through the top"), ARParkour::BoxSignedDistance(FVector(50.f, 50.f, 97.f), Box, N), -3.f);
+	TestTrue(TEXT("normal up from inside"), N.Equals(FVector(0.f, 0.f, 1.f)));
+	TestEqual(TEXT("a segment clear of the box does not penetrate"), ARParkour::SegmentPenetration(FVector(-50.f, 50.f, 50.f), FVector(-30.f, 50.f, 50.f), 5.f, Box, N), 0.f);
+	TestEqual(TEXT("a capsule of radius 5 touching a face by 2 cm penetrates 3 cm"), ARParkour::SegmentPenetration(FVector(-2.f, 50.f, 50.f), FVector(-2.f, 60.f, 50.f), 5.f, Box, N), 3.f);
+	TestTrue(TEXT("pushed out along -X"), N.Equals(FVector(-1.f, 0.f, 0.f)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourCloseTest, "ActionRoguelike.Parkour.TooClose", AR_TEST_FLAGS)
+bool FARParkourCloseTest::RunTest(const FString& Parameters)
+{
+	using ARParkour::EMove;
+	TestTrue(TEXT("a 200 cm mantle at 60 cm is too close"), ARParkour::MantleTooClose(EMove::Mantle, 200.f, 60.f));
+	TestTrue(TEXT("a 150 cm mantle at 79 cm is too close"), ARParkour::MantleTooClose(EMove::Mantle, 150.f, 79.f));
+	TestFalse(TEXT("a 150 cm mantle at 80 cm is fine"), ARParkour::MantleTooClose(EMove::Mantle, 150.f, 80.f));
+	TestFalse(TEXT("a 110 cm mantle at 60 cm is fine"), ARParkour::MantleTooClose(EMove::Mantle, 110.f, 60.f));
+	TestFalse(TEXT("a vault is never checked"), ARParkour::MantleTooClose(EMove::Vault, 90.f, 20.f));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARParkourMantleTest, "ActionRoguelike.Parkour.Mantle", AR_TEST_FLAGS)
 bool FARParkourMantleTest::RunTest(const FString& Parameters)
 {
 	using ARParkour::EMove;
 	TestTrue(TEXT("just above the vault limit mantles"), ARParkour::Classify(Wall(96.f)) == EMove::Mantle);
 	TestTrue(TEXT("height 200 mantles"), ARParkour::Classify(Wall(200.f)) == EMove::Mantle);
-	TestTrue(TEXT("height 205 is the highest mantle"), ARParkour::Classify(Wall(205.f)) == EMove::Mantle);
-	TestTrue(TEXT("height 206 is too high"), ARParkour::Classify(Wall(206.f)) == EMove::None);
-	TestTrue(TEXT("a 240 cm wall is a plain jump"), ARParkour::Classify(Wall(240.f)) == EMove::None);
+	TestTrue(TEXT("height 260 mantles (the climbing clip)"), ARParkour::Classify(Wall(260.f)) == EMove::Mantle);
+	TestTrue(TEXT("height 275 is the highest mantle"), ARParkour::Classify(Wall(275.f)) == EMove::Mantle);
+	TestTrue(TEXT("height 276 is too high"), ARParkour::Classify(Wall(276.f)) == EMove::None);
 	TestTrue(TEXT("a thick block can be mantled"), ARParkour::Classify(Wall(200.f, 600.f)) == EMove::Mantle);
 
 	ARParkour::FObstacle NoLanding = Wall(200.f);

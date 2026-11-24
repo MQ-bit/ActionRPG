@@ -77,8 +77,14 @@ namespace ARParkour
 	constexpr float VaultMaxHeight = 95.f;
 	/** The vault clip (Hurdle_1_0) crosses about this much; a thicker obstacle is climbed onto instead (measured: 90 cm fails). */
 	constexpr float VaultMaxThickness = 59.f;
-	/** The tallest mantle: the step-up clip (Mantle_1_0, authored for about 1 m) is used up to a 2 m block; the climbing clips for taller walls were dropped, a taller wall is a plain jump. */
-	constexpr float MantleMaxHeight = 205.f;
+	/**
+	 * The tallest mantle. The step-up clip (Mantle_1_0, hands on a ledge of about 1.1 m) is used up to a 2 m block, the climbing clip
+	 * (Climb_Start_2_5, hands on a ledge of about 2.6 m, it jumps to the ledge) from 215 cm, authored for 261 cm; a taller wall is a plain jump.
+	 */
+	constexpr float MantleMaxHeight = 275.f;
+	/** A mantle of at least this height needs the wall this far away, closer the body ends up inside it (measured: 14-23 cm deep at a wall distance of 56 cm, 5-7 cm from 85 cm). */
+	constexpr float TallMantleMinHeight = 150.f;
+	constexpr float TallMantleMinWallDistance = 80.f;
 	/** A mantle needs a top at least this many capsule radii deep, or the capsule would hang over the far edge. */
 	constexpr float MantleMinTopDepthRadii = 1.25f;
 	/** The top must reach this many capsule radii to both sides of where the capsule ends (the capsule's body, not its whole width). */
@@ -107,6 +113,56 @@ namespace ARParkour
 		}
 
 		return EMove::None;
+	}
+
+	/** True when a tall mantle starts closer to the wall than the clips' approach: the clip starts late (see PlayClip) instead of the whole approach being squeezed. */
+	inline bool MantleTooClose(EMove Move, float Height, float WallDistance)
+	{
+		return Move == EMove::Mantle && Height >= TallMantleMinHeight && WallDistance < TallMantleMinWallDistance;
+	}
+
+	/** Signed distance from a point to an axis-aligned box: positive outside, negative inside. OutNormal points out of the box (at a point inside: out of the nearest face). */
+	inline float BoxSignedDistance(const FVector& Point, const FBox& Box, FVector& OutNormal)
+	{
+		const FVector Center = Box.GetCenter();
+		const FVector Extent = Box.GetExtent();
+		const FVector Local = Point - Center;
+		const FVector Q(FMath::Abs(Local.X) - Extent.X, FMath::Abs(Local.Y) - Extent.Y, FMath::Abs(Local.Z) - Extent.Z);
+		const FVector Outside(FMath::Max(Q.X, 0.), FMath::Max(Q.Y, 0.), FMath::Max(Q.Z, 0.));
+		const float OutsideLength = static_cast<float>(Outside.Size());
+		if (OutsideLength > KINDA_SMALL_NUMBER)
+		{
+			OutNormal = FVector(FMath::Sign(Local.X) * Outside.X, FMath::Sign(Local.Y) * Outside.Y, FMath::Sign(Local.Z) * Outside.Z) / OutsideLength;
+			return OutsideLength;
+		}
+		// Inside: out through the nearest face (the largest, closest to zero, component of Q).
+		int32 Axis = 0;
+		for (int32 I = 1; I < 3; ++I)
+		{
+			Axis = Q[I] > Q[Axis] ? I : Axis;
+		}
+		OutNormal = FVector::ZeroVector;
+		OutNormal[Axis] = Local[Axis] >= 0. ? 1. : -1.;
+		return static_cast<float>(Q[Axis]);
+	}
+
+	/** How far a capsule (the segment A to B, thickened by Radius) is inside the box: the deepest of a few samples along it, 0 when clear. OutNormal: the way out at that sample. */
+	inline float SegmentPenetration(const FVector& A, const FVector& B, float Radius, const FBox& Box, FVector& OutNormal)
+	{
+		float Deepest = 0.f;
+		OutNormal = FVector::ZeroVector;
+		for (int32 Sample = 0; Sample <= 4; ++Sample)
+		{
+			FVector Normal;
+			const float Distance = BoxSignedDistance(FMath::Lerp(A, B, Sample / 4.f), Box, Normal);
+			const float Depth = Radius - Distance;
+			if (Depth > Deepest)
+			{
+				Deepest = Depth;
+				OutNormal = Normal;
+			}
+		}
+		return Deepest;
 	}
 
 	/** Hand IK weight over montage time: 0 before Start - Ramp, ramps up to 1 at Start, 1 until End, ramps down to 0 at End + Ramp. */

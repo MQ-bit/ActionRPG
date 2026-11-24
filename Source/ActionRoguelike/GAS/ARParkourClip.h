@@ -78,6 +78,15 @@ struct FARParkourClip
 	float AuthoredHeightCm = 0.f;
 
 	/**
+	 * GASP-style ledge registration. The approach and back-ledge windows put the clip's ledge point (AuthoredHeightCm high, ReferenceDistanceCm
+	 * from where the clip starts) on the real ledge; with this set the rest of the clip is NOT warped to the landing, it plays on as made, so its
+	 * poses stay in step with the ledge (hands, feet, knees at the same place against the edge at every height). The move then ends where the
+	 * clip ends. Used only when that spot is free and on the top; else the landing warp (ParkourTarget window) is used as before.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour")
+	bool bRigidAfterLedge = false;
+
+	/**
 	 * Added to the height of the warp target (cm), for a clip whose last frame ends this much above (use a negative value) or
 	 * below the target: the arrival snap then has nothing left to correct, so the capsule does not pop on the last frame.
 	 */

@@ -30,6 +30,12 @@ namespace
 	constexpr float MantleDepthScanExtraCm = 40.f;
 	/** The blend-out of a clip that ends early because the player moves (s). */
 	constexpr float MoveCancelBlendSeconds = 0.25f;
+	TAutoConsoleVariable<int32> CVarCloseWall(TEXT("ar.Parkour.CloseWall"), 2, TEXT("A tall mantle (150 cm and up) closer than 80 cm to the wall: 1 skips the move (a plain jump), 0 plays the clip from a late start (the body goes 10-20 cm into the wall), 2 (default) walks a step backwards first when standing or slow (else skips the move)."));
+	/** Experiment (CloseWall 2): the wall distance the step back aims for (cm), the longest step (cm), the walking speed backwards (cm/s) and the speed above which there is no step back (cm/s). */
+	constexpr float StepBackTargetWallCm = 85.f;
+	constexpr float StepBackMaxCm = 40.f;
+	constexpr float StepBackWalkSpeed = 170.f;
+	constexpr float StepBackMaxSpeed = 150.f;
 	TAutoConsoleVariable<int32> CVarMatchFeet(TEXT("ar.Parkour.MatchFeet"), 1, TEXT("1 compares the feet with the clip's feet when picking the start of a matched parkour move, 0 leaves them out."));
 	/** Obstacles deeper than this count as "very thick"; only the vault limit (75) matters. */
 	constexpr float MaxThicknessProbe = 400.f;
@@ -55,8 +61,21 @@ bool UARGA_Parkour::CanActivateAbility(const FGameplayAbilitySpecHandle Handle, 
 	const FGameplayTagContainer* SourceTags, const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
 {
 	FProbeResult Result;
-	return Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags) && Probe(ActorInfo, Result)
-		&& !IsTooFar(Result, ActorInfo);
+	const bool bBase = Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
+	const bool bProbed = bBase && Probe(ActorInfo, Result);
+	const bool bFar = bProbed && IsTooFar(Result, ActorInfo);
+	if (bBase && (!bProbed || bFar))
+	{
+		UE_LOG(LogAR, Verbose, TEXT("[Parkour] cannot start: probe %s, too far %s (wall %.0f cm, height %.0f)"), bProbed ? TEXT("ok") : TEXT("failed"), bFar ? TEXT("yes") : TEXT("no"), bProbed ? Result.WallDistance : 0.f, bProbed ? Result.Height : 0.f);
+	}
+	else if (!bBase)
+	{
+		UE_LOG(LogAR, Verbose, TEXT("[Parkour] cannot start: the ability itself is blocked (tags, cost, already running)"));
+	}
+	return bProbed && !bFar
+		&& !(ARParkour::MantleTooClose(Result.Move, Result.Height, Result.WallDistance)
+			&& (CVarCloseWall.GetValueOnGameThread() == 1
+				|| (CVarCloseWall.GetValueOnGameThread() == 2 && ActorInfo && ActorInfo->AvatarActor.IsValid() && ActorInfo->AvatarActor->GetVelocity().Size2D() > StepBackMaxSpeed)));
 }
 
 int32 UARGA_Parkour::PickClipIndex(const FProbeResult& Result, const ACharacter* Character) const
@@ -102,6 +121,16 @@ void UARGA_Parkour::ActivateAbility(const FGameplayAbilitySpecHandle Handle, con
 		return;
 	}
 
+	if (CVarCloseWall.GetValueOnGameThread() == 2 && ARParkour::MantleTooClose(Result.Move, Result.Height, Result.WallDistance))
+	{
+		BeginStepBack(Result);
+		return;
+	}
+	BeginMove(Result);
+}
+
+void UARGA_Parkour::BeginMove(const FProbeResult& Result)
+{
 	AActor* Avatar = GetAvatarActorFromActorInfo();
 	Avatar->SetActorRotation(Result.Facing);
 	BeginCameraOverride(Avatar, Result.Move == ARParkour::EMove::Mantle ? MantleCameraRaiseCm : 0.f);
@@ -109,6 +138,72 @@ void UARGA_Parkour::ActivateAbility(const FGameplayAbilitySpecHandle Handle, con
 	if (!TryStartMontage(Result))
 	{
 		StartInterpolatedMove(Result);
+	}
+}
+
+void UARGA_Parkour::BeginStepBack(const FProbeResult& Result)
+{
+	ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+	if (!Character)
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+	Character->SetActorRotation(Result.Facing);
+	Movement->StopMovementImmediately();
+	// Walk backwards facing the wall: the body must not turn toward the movement (the lock-on strafe does the same).
+	bSavedOrientToMovement = Movement->bOrientRotationToMovement;
+	SavedMaxWalkSpeed = Movement->MaxWalkSpeed;
+	Movement->bOrientRotationToMovement = false;
+	Movement->MaxWalkSpeed = StepBackWalkSpeed;
+	bStepBackActive = true;
+	StepBackTicks = 0;
+	StepBackTotal = FMath::Clamp(StepBackTargetWallCm - Result.WallDistance, 0.f, StepBackMaxCm);
+	StepBackFrom = Character->GetActorLocation();
+	StepBackDirection = -Result.Inward.GetSafeNormal2D();
+	UE_LOG(LogAR, Verbose, TEXT("[Parkour] step back %.0f cm walking %.0f cm/s (wall %.0f cm)"), StepBackTotal, StepBackWalkSpeed, Result.WallDistance);
+	Character->GetWorld()->GetTimerManager().SetTimer(StepBackTimer, this, &UARGA_Parkour::StepBackTick, 0.001f, true);
+}
+
+void UARGA_Parkour::EndStepBack()
+{
+	ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+	if (!bStepBackActive || !Character)
+	{
+		return;
+	}
+	bStepBackActive = false;
+	UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+	Movement->bOrientRotationToMovement = bSavedOrientToMovement;
+	Movement->MaxWalkSpeed = SavedMaxWalkSpeed;
+	Movement->StopMovementImmediately();
+	Character->GetWorld()->GetTimerManager().ClearTimer(StepBackTimer);
+}
+
+void UARGA_Parkour::StepBackTick()
+{
+	ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
+	if (!Character || !IsActive())
+	{
+		return;
+	}
+	const float Travelled = static_cast<float>(FVector::DotProduct(Character->GetActorLocation() - StepBackFrom, StepBackDirection));
+	// Ends when the distance is walked, or after 1.5 s (something in the way). The timer runs several times per frame (it catches up), so every frame gets the input (a frame without it brakes).
+	if (Travelled < StepBackTotal - 1.f && ++StepBackTicks < 1500)
+	{
+		Character->GetCharacterMovement()->AddInputVector(StepBackDirection, true);
+		return;
+	}
+	EndStepBack();
+	FProbeResult Fresh;
+	if (Probe(CurrentActorInfo, Fresh))
+	{
+		BeginMove(Fresh);
+	}
+	else
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 	}
 }
 
@@ -252,7 +347,8 @@ bool UARGA_Parkour::PlayClip(const FProbeResult& Result, int32 Index)
 	float StartPosition = Clip.StartPosition;
 	float ReferenceDistance = Clip.ReferenceDistanceCm;
 
-	if (Clip.bMatchStart)
+	// A tall mantle very close to the wall starts late in the clip (the start match skips the approach it has no room for), also for the clips that are not matched otherwise.
+	if (Clip.bMatchStart || ARParkour::MantleTooClose(Result.Move, Result.Height, Result.WallDistance))
 	{
 		float MatchedStart = 0.f;
 		float MatchedReference = 0.f;
@@ -299,6 +395,34 @@ bool UARGA_Parkour::PlayClip(const FProbeResult& Result, int32 Index)
 		Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::BackLedgeWarpTargetName(), Feet, Result.Facing);
 	}
 
+	// GASP-style: where the unwarped rest of the clip ends once it is registered on the ledge (the same registration as the back-ledge target above,
+	// at the end of the clip). The capsule must fit there, on the top; if not the landing warp below is used.
+	bool bRigid = false;
+	FVector RigidCenter = FVector::ZeroVector;
+	if (Clip.bRigidAfterLedge && Clip.BackLedgeEnd > Clip.ApproachEnd && Clip.AuthoredHeightCm > 0.f)
+	{
+		const FAnimExtractContext Context(0.0, true);
+		const FVector MovedEnd = Montage->ExtractRootMotionFromTrackRange(StartPosition, Montage->GetPlayLength(), Context).GetTranslation();
+		const FVector Forward = Result.Inward.GetSafeNormal2D();
+		const float PastEnd = static_cast<float>(MovedEnd.Size2D()) - ReferenceDistance;
+		const float FloorZ = Character->GetActorLocation().Z - Result.HalfHeight;
+		RigidCenter = FVector(Result.FrontEdgePoint.X + Forward.X * PastEnd, Result.FrontEdgePoint.Y + Forward.Y * PastEnd,
+			FloorZ + static_cast<float>(MovedEnd.Z) + (Result.Height - Clip.AuthoredHeightCm) + Result.HalfHeight);
+		FHitResult Support;
+		const FVector Up(0.f, 0.f, Result.HalfHeight);
+		const bool bSupported = Character->GetWorld()->LineTraceSingleByChannel(Support, RigidCenter + Up, RigidCenter - Up - FVector(0.f, 0.f, 20.f), ECC_Visibility, FCollisionQueryParams(SCENE_QUERY_STAT(ARParkourRigidEnd), false, Character))
+			&& Support.ImpactNormal.Z >= 0.7f && FMath::Abs(Support.ImpactPoint.Z + Result.HalfHeight - RigidCenter.Z) <= 12.f;
+		const bool bFitsTop = Result.Move != ARParkour::EMove::Mantle || PastEnd + Character->GetCapsuleComponent()->GetScaledCapsuleRadius() <= Result.TopDepth;
+		bRigid = bSupported && bFitsTop && !CapsuleBlockedAt(RigidCenter);
+		if (bRigid)
+		{
+			// The clip's own end height is a few cm off the real top: the last window warps only that height (x/y stay as the clip made them),
+			// otherwise the capsule drops to the floor in one frame when the montage ends.
+			RigidCenter.Z = Support.ImpactPoint.Z + Result.HalfHeight + 2.f; // the same clearance as the probe's targets
+		}
+		UE_LOG(LogAR, Verbose, TEXT("[Parkour] rigid end: %.0f cm past the edge, supported %d, fits the top %d (top depth %.0f) -> %s"), PastEnd, bSupported, bFitsTop, Result.TopDepth, bRigid ? TEXT("rigid") : TEXT("landing warp"));
+	}
+
 	UE_LOG(LogAR, Verbose, TEXT("[Parkour] clip %d wall %.0f cm (reference %.0f): start %.2f s%s speed %.0f"), Index, Result.WallDistance, ReferenceDistance, StartPosition,
 		Clip.bMatchStart ? TEXT(" (matched)") : TEXT(""), Character->GetVelocity().Size2D());
 	// Where the capsule ends up: the probed target, moved along the move direction by the clip's offset when that spot is free (the
@@ -321,8 +445,17 @@ bool UARGA_Parkour::PlayClip(const FProbeResult& Result, int32 Index)
 			Landing = Shifted;
 		}
 	}
-	// The warp target is where the feet end up (the warp notify warps to the feet location).
-	Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::WarpTargetName(), Landing - FVector(0.f, 0.f, Result.HalfHeight - Clip.WarpOffsetZCm), Result.Facing);
+	if (bRigid)
+	{
+		// The clip plays on as made after the ledge windows (x/y), only its end height is eased to the real top.
+		Landing = RigidCenter;
+		Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::WarpTargetName(), Landing - FVector(0.f, 0.f, Result.HalfHeight), Result.Facing);
+	}
+	else
+	{
+		// The warp target is where the feet end up (the warp notify warps to the feet location).
+		Warp->AddOrUpdateWarpTargetFromLocationAndRotation(ARParkour::WarpTargetName(), Landing - FVector(0.f, 0.f, Result.HalfHeight - Clip.WarpOffsetZCm), Result.Facing);
+	}
 	if (ASC->PlayMontage(this, CurrentActivationInfo, Montage, Clip.PlayRate, NAME_None, StartPosition) <= 0.f)
 	{
 		// Could not start: nothing else has been touched yet, so the interpolated move can take over.
@@ -492,6 +625,7 @@ bool UARGA_Parkour::CapsuleBlockedAt(const FVector& Location, float Inset) const
 void UARGA_Parkour::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
+	EndStepBack();
 	CleanUpMontageMove(!bWasCancelled);
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 
