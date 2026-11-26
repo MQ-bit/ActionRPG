@@ -10,6 +10,8 @@
 #include "DrawDebugHelpers.h"
 #include "Engine/OverlapResult.h"
 #include "GameFramework/Actor.h"
+#include "Character/AREquipmentComponent.h"
+#include "Combat/ARWeaponData.h"
 #include "Core/ARTeam.h"
 #include "GameplayEffect.h"
 #include "GAS/ARGameplayTags.h"
@@ -30,7 +32,23 @@ UARGA_BasicAttack::UARGA_BasicAttack()
 void UARGA_BasicAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
-	if (ComboMontages.IsEmpty() || !ComboMontages[0] || !CommitAbility(Handle, ActorInfo, ActivationInfo))
+	// The player's equipped weapon (enemies have no equipment component and keep the values of their Blueprint).
+	FARAttackValues Unarmed;
+	Unarmed.Montages = ComboMontages;
+	Unarmed.Damage = Damage;
+	Unarmed.HitRange = HitRange;
+	Unarmed.HitRadius = HitRadius;
+	const AActor* Avatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+	UAREquipmentComponent* Equipment = Avatar ? Avatar->FindComponentByClass<UAREquipmentComponent>() : nullptr;
+	ActiveEquipment = Equipment;
+	const FARAttackValues Values = ARWeapon::ResolveAttackValues(Unarmed, Equipment ? Equipment->GetEquippedWeapon() : nullptr,
+		Equipment && Equipment->IsBroken());
+	ActiveMontages = Values.Montages;
+	ActiveDamage = Values.Damage;
+	ActiveHitRange = Values.HitRange;
+	ActiveHitRadius = Values.HitRadius;
+
+	if (ActiveMontages.IsEmpty() || !ActiveMontages[0] || !CommitAbility(Handle, ActorInfo, ActivationInfo))
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
@@ -47,7 +65,7 @@ void UARGA_BasicAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 
 void UARGA_BasicAttack::PlayStep(int32 StepIndex)
 {
-	UAnimMontage* Montage = ComboMontages.IsValidIndex(StepIndex) ? ComboMontages[StepIndex].Get() : nullptr;
+	UAnimMontage* Montage = ActiveMontages.IsValidIndex(StepIndex) ? ActiveMontages[StepIndex].Get() : nullptr;
 	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
 	UAnimInstance* AnimInstance = CurrentActorInfo ? CurrentActorInfo->GetAnimInstance() : nullptr;
 	if (!Montage || !ASC || !AnimInstance || ASC->PlayMontage(this, CurrentActivationInfo, Montage, 1.f) <= 0.f)
@@ -56,7 +74,8 @@ void UARGA_BasicAttack::PlayStep(int32 StepIndex)
 		return;
 	}
 
-	const int32 PlaybackId = ComboState.BeginStep(StepIndex, ComboMontages.Num());
+	const int32 PlaybackId = ComboState.BeginStep(StepIndex, ActiveMontages.Num());
+	bDurabilityChargedThisStep = false;
 
 	FOnMontageBlendingOutStarted BlendingOut;
 	BlendingOut.BindUObject(this, &UARGA_BasicAttack::OnMontageBlendingOut, PlaybackId);
@@ -132,22 +151,23 @@ void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 		return;
 	}
 
-	const FVector Center = Avatar->GetActorLocation() + Avatar->GetActorForwardVector() * HitRange;
+	const FVector Center = Avatar->GetActorLocation() + Avatar->GetActorForwardVector() * ActiveHitRange;
 
 	TArray<FOverlapResult> Overlaps;
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ARBasicAttackHit), false, Avatar);
 	World->OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, FCollisionObjectQueryParams(ECC_Pawn),
-		FCollisionShape::MakeSphere(HitRadius), QueryParams);
+		FCollisionShape::MakeSphere(ActiveHitRadius), QueryParams);
 
 #if ENABLE_DRAW_DEBUG
 	if (bDrawDebugHit)
 	{
-		DrawDebugSphere(World, Center, HitRadius, 16, FColor::Red, false, 1.f);
+		DrawDebugSphere(World, Center, ActiveHitRadius, 16, FColor::Red, false, 1.f);
 	}
 #endif
 
 	const IGenericTeamAgentInterface* SourceTeam = Cast<IGenericTeamAgentInterface>(Avatar);
 
+	bool bDamagedAnEnemy = false;
 	TSet<AActor*> Damaged;
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
@@ -175,8 +195,19 @@ void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 		FGameplayEffectSpecHandle Spec = MakeOutgoingGameplayEffectSpec(DamageEffectClass, GetAbilityLevel());
 		if (Spec.IsValid())
 		{
-			Spec.Data->SetSetByCallerMagnitude(TAG_Data_Damage.GetTag(), -Damage);
+			Spec.Data->SetSetByCallerMagnitude(TAG_Data_Damage.GetTag(), -ActiveDamage);
 			SourceASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), TargetASC);
+			bDamagedAnEnemy = true;
+		}
+	}
+
+	// A swing that damaged at least one enemy wears the weapon once, however many it hit.
+	if (bDamagedAnEnemy && !bDurabilityChargedThisStep)
+	{
+		bDurabilityChargedThisStep = true;
+		if (UAREquipmentComponent* Equipment = ActiveEquipment.Get())
+		{
+			Equipment->OnWeaponHit();
 		}
 	}
 }

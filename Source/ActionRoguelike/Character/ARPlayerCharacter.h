@@ -90,6 +90,24 @@ protected:
 	UFUNCTION(Exec)
 	void ARAttack();
 
+	/** Console command `ARToggleWeapon`: same path as the weapon toggle input. */
+	UFUNCTION(Exec)
+	void ARToggleWeapon();
+
+	/** Console command `ARRepairWeapon <amount>`: repairs the held weapon until crafting provides the repair. */
+	UFUNCTION(Exec)
+	void ARRepairWeapon(float Amount);
+
+	void OnToggleWeaponInput();
+
+	/** Held weapon, its mesh and durability. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	TObjectPtr<class UAREquipmentComponent> Equipment;
+
+	/** Equips / unequips the default weapon (key 1). */
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TObjectPtr<UInputAction> ToggleWeaponAction;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;
 
