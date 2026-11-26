@@ -70,4 +70,19 @@ protected:
 
 private:
 	FARComboState ComboState;
+
+	// Values of the running activation: the fields above, overridden by the weapon equipped when the attack started.
+	// The fields above are never written, so an unarmed attack after a weapon one gets the unarmed values back.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UAnimMontage>> ActiveMontages;
+	float ActiveDamage = 0.f;
+	float ActiveHitRange = 0.f;
+	float ActiveHitRadius = 0.f;
+
+	TWeakObjectPtr<class UAREquipmentComponent> ActiveEquipment;
+	/** Weapon equipped when the attack started (null = unarmed). */
+	UPROPERTY(Transient)
+	TObjectPtr<class UARWeaponData> ActiveWeapon;
+	/** Durability is charged once per swing (combo step) that damaged an enemy. */
+	bool bDurabilityChargedThisStep = false;
 };

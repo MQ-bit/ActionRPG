@@ -15,6 +15,7 @@
 #include "GAS/ARGameplayTags.h"
 #include "InputActionValue.h"
 #include "MotionWarpingComponent.h"
+#include "Character/AREquipmentComponent.h"
 #include "Character/ARLockOnComponent.h"
 #include "Character/ARParkourIKComponent.h"
 #include "UI/ARHealthBarWidget.h"
@@ -42,6 +43,7 @@ AARPlayerCharacter::AARPlayerCharacter()
 	MotionWarping = CreateDefaultSubobject<UMotionWarpingComponent>(TEXT("MotionWarping"));
 	ParkourIK = CreateDefaultSubobject<UARParkourIKComponent>(TEXT("ParkourIK"));
 	LockOn = CreateDefaultSubobject<UARLockOnComponent>(TEXT("LockOn"));
+	Equipment = CreateDefaultSubobject<UAREquipmentComponent>(TEXT("Equipment"));
 }
 
 void AARPlayerCharacter::SetWalking(bool bWalk)
@@ -123,6 +125,10 @@ void AARPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		if (LockOnAction)
 		{
 			EIC->BindAction(LockOnAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnLockOnInput);
+		}
+		if (ToggleWeaponAction)
+		{
+			EIC->BindAction(ToggleWeaponAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnToggleWeaponInput);
 		}
 		if (WalkAction)
 		{
@@ -289,4 +295,25 @@ void AARPlayerCharacter::ARLock()
 void AARPlayerCharacter::ARAttack()
 {
 	OnAttackInput();
+}
+
+void AARPlayerCharacter::OnToggleWeaponInput()
+{
+	// The attack read its weapon when it started and the parkour hides the mesh: no swapping in the middle of either.
+	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag())
+		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag()))
+	{
+		return;
+	}
+	Equipment->ToggleDefaultWeapon();
+}
+
+void AARPlayerCharacter::ARToggleWeapon()
+{
+	OnToggleWeaponInput();
+}
+
+void AARPlayerCharacter::ARRepairWeapon(float Amount)
+{
+	Equipment->Repair(Amount);
 }
