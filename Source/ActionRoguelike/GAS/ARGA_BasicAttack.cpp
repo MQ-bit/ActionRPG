@@ -41,8 +41,8 @@ void UARGA_BasicAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	const AActor* Avatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
 	UAREquipmentComponent* Equipment = Avatar ? Avatar->FindComponentByClass<UAREquipmentComponent>() : nullptr;
 	ActiveEquipment = Equipment;
-	const FARAttackValues Values = ARWeapon::ResolveAttackValues(Unarmed, Equipment ? Equipment->GetEquippedWeapon() : nullptr,
-		Equipment && Equipment->IsBroken());
+	ActiveWeapon = Equipment ? Equipment->GetEquippedWeapon() : nullptr;
+	const FARAttackValues Values = ARWeapon::ResolveAttackValues(Unarmed, ActiveWeapon, Equipment && Equipment->IsBroken());
 	ActiveMontages = Values.Montages;
 	ActiveDamage = Values.Damage;
 	ActiveHitRange = Values.HitRange;
@@ -167,6 +167,12 @@ void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 
 	const IGenericTeamAgentInterface* SourceTeam = Cast<IGenericTeamAgentInterface>(Avatar);
 
+	// A weapon that broke earlier in this combo hits with its broken damage from then on (montages and range stay).
+	UAREquipmentComponent* Equipment = ActiveEquipment.Get();
+	const float HitDamage = ActiveWeapon && Equipment && Equipment->GetEquippedWeapon() == ActiveWeapon && Equipment->IsBroken()
+		? ActiveWeapon->Damage * ActiveWeapon->BrokenDamageScale
+		: ActiveDamage;
+
 	bool bDamagedAnEnemy = false;
 	TSet<AActor*> Damaged;
 	for (const FOverlapResult& Overlap : Overlaps)
@@ -195,9 +201,9 @@ void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 		FGameplayEffectSpecHandle Spec = MakeOutgoingGameplayEffectSpec(DamageEffectClass, GetAbilityLevel());
 		if (Spec.IsValid())
 		{
-			Spec.Data->SetSetByCallerMagnitude(TAG_Data_Damage.GetTag(), -ActiveDamage);
-			SourceASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), TargetASC);
-			bDamagedAnEnemy = true;
+			Spec.Data->SetSetByCallerMagnitude(TAG_Data_Damage.GetTag(), -HitDamage);
+			const FActiveGameplayEffectHandle Applied = SourceASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), TargetASC);
+			bDamagedAnEnemy |= HitDamage > 0.f && Applied.WasSuccessfullyApplied();
 		}
 	}
 
@@ -205,7 +211,7 @@ void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 	if (bDamagedAnEnemy && !bDurabilityChargedThisStep)
 	{
 		bDurabilityChargedThisStep = true;
-		if (UAREquipmentComponent* Equipment = ActiveEquipment.Get())
+		if (Equipment)
 		{
 			Equipment->OnWeaponHit();
 		}

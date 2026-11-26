@@ -23,6 +23,8 @@ void UAREquipmentComponent::BeginPlay()
 		TagASC = ASC;
 		ParkourTagHandle = ASC->RegisterGameplayTagEvent(TAG_State_Parkouring.GetTag(), EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this, &UAREquipmentComponent::OnParkourTagChanged);
+		// A weapon equipped before BeginPlay during a parkour must not stay visible until the next tag change.
+		UpdateMeshVisibility();
 	}
 }
 

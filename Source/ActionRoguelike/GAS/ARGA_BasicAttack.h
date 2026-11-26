@@ -80,6 +80,9 @@ private:
 	float ActiveHitRadius = 0.f;
 
 	TWeakObjectPtr<class UAREquipmentComponent> ActiveEquipment;
+	/** Weapon equipped when the attack started (null = unarmed). */
+	UPROPERTY(Transient)
+	TObjectPtr<class UARWeaponData> ActiveWeapon;
 	/** Durability is charged once per swing (combo step) that damaged an enemy. */
 	bool bDurabilityChargedThisStep = false;
 };
