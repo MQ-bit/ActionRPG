@@ -37,9 +37,15 @@ public:
 	bool OnWeaponHit();
 	void Repair(float Amount);
 
+	UFUNCTION(BlueprintPure, Category = "Weapon")
 	UARWeaponData* GetEquippedWeapon() const { return EquippedWeapon; }
+	UFUNCTION(BlueprintPure, Category = "Weapon")
 	bool IsBroken() const { return EquippedWeapon && Durability.IsBroken(); }
+	/** 0..1 for the durability bar; 1 for a weapon without durability. */
+	UFUNCTION(BlueprintPure, Category = "Weapon")
+	float GetDurabilityFraction() const { return Durability.Fraction(); }
 	const FARDurability& GetDurability() const { return Durability; }
+	UFUNCTION(BlueprintPure, Category = "Weapon")
 	UStaticMeshComponent* GetWeaponMesh() const { return WeaponMesh; }
 
 	FAROnWeaponChanged OnEquippedWeaponChanged;
