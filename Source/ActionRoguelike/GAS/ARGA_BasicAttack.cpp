@@ -13,6 +13,7 @@
 #include "Character/AREquipmentComponent.h"
 #include "Combat/ARWeaponData.h"
 #include "Camera/CameraShakeBase.h"
+#include "Character/ARCharacterBase.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Core/ARCombat.h"
 #include "GameFramework/PlayerController.h"
@@ -156,21 +157,15 @@ void UARGA_BasicAttack::PlayImpactFeel(AActor* Attacker, AActor* Target) const
 		return;
 	}
 
-	// Hit stop: both bodies freeze for a moment. The restore runs on world time, which the custom dilation does not slow.
+	// Hit stop: both bodies freeze for a moment (the character keeps one freeze, so overlapping hits extend it).
 	if (HitStopSeconds > 0.f)
 	{
 		for (AActor* Actor : { Attacker, Target })
 		{
-			if (!Actor)
+			if (AARCharacterBase* Character = Cast<AARCharacterBase>(Actor))
 			{
-				continue;
+				Character->ApplyHitStop(HitStopSeconds, HitStopTimeDilation);
 			}
-			Actor->CustomTimeDilation = HitStopTimeDilation;
-			FTimerHandle Handle;
-			World->GetTimerManager().SetTimer(Handle, FTimerDelegate::CreateWeakLambda(Actor, [Actor]()
-			{
-				Actor->CustomTimeDilation = 1.f;
-			}), HitStopSeconds, false);
 		}
 	}
 

@@ -126,6 +126,36 @@ bool FARHitReactParriedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARHitStopOverlapTest, "ActionRoguelike.Combat.HitStop.OverlapExtendsAndRestores", AR_TEST_FLAGS)
+bool FARHitStopOverlapTest::RunTest(const FString& Parameters)
+{
+	FTestWorldWrapper Wrapper;
+	if (!Wrapper.CreateTestWorld(EWorldType::Game) || !Wrapper.BeginPlayInTestWorld())
+	{
+		Wrapper.ForwardErrorMessages(this);
+		return false;
+	}
+	AAREnemyCharacter* Enemy = SpawnIn<AAREnemyCharacter>(Wrapper, FVector(0.f, 0.f, 96.f));
+	if (!TestNotNull(TEXT("enemy"), Enemy))
+	{
+		return false;
+	}
+	Enemy->CustomTimeDilation = 0.5f;
+	Enemy->ApplyHitStop(0.07f, 0.05f);
+	TestEqual(TEXT("frozen"), Enemy->CustomTimeDilation, 0.05f);
+	Wrapper.TickTestWorld(0.03f);
+	Enemy->ApplyHitStop(0.07f, 0.05f);
+	Wrapper.TickTestWorld(0.05f);
+	TestEqual(TEXT("a second hit at 0.03 s keeps it frozen past the first end (0.07 s)"), Enemy->CustomTimeDilation, 0.05f);
+	// The test world fires timers a tick or two late, so give it a little more than the 0.10 s end.
+	for (int32 i = 0; i < 6; ++i)
+	{
+		Wrapper.TickTestWorld(0.02f);
+	}
+	TestEqual(TEXT("after the last hit stop ends the dilation from before the first one is back"), Enemy->CustomTimeDilation, 0.5f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FARBlockHoldTest, "ActionRoguelike.Combat.Block.HoldReleaseAndLockout", AR_TEST_FLAGS)
 bool FARBlockHoldTest::RunTest(const FString& Parameters)
 {

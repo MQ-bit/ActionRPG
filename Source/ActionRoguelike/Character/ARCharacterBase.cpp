@@ -40,6 +40,27 @@ ETeamAttitude::Type AARCharacterBase::GetTeamAttitudeTowards(const AActor& Other
 	return ARTeam::IsHostile(TeamId, OtherTeam) ? ETeamAttitude::Hostile : ETeamAttitude::Friendly;
 }
 
+void AARCharacterBase::ApplyHitStop(float Seconds, float TimeDilation)
+{
+	UWorld* World = GetWorld();
+	if (!World || Seconds <= 0.f)
+	{
+		return;
+	}
+	FTimerManager& Timers = World->GetTimerManager();
+	const float Remaining = Timers.IsTimerActive(HitStopTimer) ? Timers.GetTimerRemaining(HitStopTimer) : 0.f;
+	if (Remaining <= 0.f)
+	{
+		TimeDilationBeforeHitStop = CustomTimeDilation;
+	}
+	CustomTimeDilation = TimeDilation;
+	// World time is not slowed by CustomTimeDilation, so the timer ends on time.
+	Timers.SetTimer(HitStopTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+	{
+		CustomTimeDilation = TimeDilationBeforeHitStop;
+	}), FMath::Max(Remaining, Seconds), false);
+}
+
 void AARCharacterBase::BeginPlay()
 {
 	Super::BeginPlay();
