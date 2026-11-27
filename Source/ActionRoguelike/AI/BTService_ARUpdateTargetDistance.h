@@ -29,7 +29,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Blackboard")
 	FBlackboardKeySelector InAttackRangeKey;
 
-	/** Flat distance (cm) under which the target counts as in attack range. */
+	/** Flat edge-to-edge distance (cm, center distance minus both collision radii) under which the target counts as in attack range. */
 	UPROPERTY(EditAnywhere, Category = "Attack", meta = (ClampMin = "0"))
 	float AttackRange = 200.f;
 };

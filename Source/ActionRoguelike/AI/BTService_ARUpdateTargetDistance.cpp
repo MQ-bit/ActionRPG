@@ -61,7 +61,10 @@ void UBTService_ARUpdateTargetDistance::TickNode(UBehaviorTreeComponent& OwnerCo
 	}
 
 	const float Distance = FVector::Dist2D(Pawn->GetActorLocation(), Target->GetActorLocation());
-	const bool bInRange = Distance <= AttackRange;
+	// Edge to edge, like MoveTo's arrival test (which subtracts both capsule radii): with a center distance the enemy
+	// "arrived" at ~264 cm and waited forever for a target standing still just outside the 200 cm center range.
+	const float EdgeDistance = Distance - Pawn->GetSimpleCollisionRadius() - Target->GetSimpleCollisionRadius();
+	const bool bInRange = EdgeDistance <= AttackRange;
 	Blackboard->SetValueAsFloat(DistanceKey.SelectedKeyName, Distance);
 	Blackboard->SetValueAsBool(InAttackRangeKey.SelectedKeyName, bInRange);
 
