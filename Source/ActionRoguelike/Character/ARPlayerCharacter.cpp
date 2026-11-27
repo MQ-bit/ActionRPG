@@ -75,6 +75,8 @@ void AARPlayerCharacter::BeginPlay()
 
 	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Parkouring.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnActionTagChanged);
 	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Attacking.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnActionTagChanged);
+	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_HitReact.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnBlockGateTagChanged);
+	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Parkouring.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnBlockGateTagChanged);
 
 	APlayerController* PC = Cast<APlayerController>(GetController());
 	if (!PC)
@@ -322,12 +324,40 @@ bool AARPlayerCharacter::IsBusyWithAction() const
 
 void AARPlayerCharacter::OnBlockPressed()
 {
-	AbilitySystemComponent->AbilityInputTagPressed(TAG_InputTag_Block.GetTag());
+	bBlockHeld = true;
+	RetryHeldBlock();
 }
 
 void AARPlayerCharacter::OnBlockReleased()
 {
+	bBlockHeld = false;
+	GetWorldTimerManager().ClearTimer(BlockRetryTimer);
 	AbilitySystemComponent->AbilityInputTagReleased(TAG_InputTag_Block.GetTag());
+}
+
+void AARPlayerCharacter::RetryHeldBlock()
+{
+	if (!bBlockHeld || AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Blocking.GetTag()))
+	{
+		GetWorldTimerManager().ClearTimer(BlockRetryTimer);
+		return;
+	}
+	AbilitySystemComponent->AbilityInputTagPressed(TAG_InputTag_Block.GetTag());
+	// A press refused by the re-block lockout keeps trying while the button is held (a refusal by a hit reaction or a
+	// parkour move is picked up by OnBlockGateTagChanged as well).
+	if (!AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Blocking.GetTag()) && !GetWorldTimerManager().IsTimerActive(BlockRetryTimer))
+	{
+		GetWorldTimerManager().SetTimer(BlockRetryTimer, this, &AARPlayerCharacter::RetryHeldBlock, 0.05f, true);
+	}
+}
+
+void AARPlayerCharacter::OnBlockGateTagChanged(const FGameplayTag /*Tag*/, int32 Count)
+{
+	// A block held through a hit reaction or a parkour move starts as soon as that ends (the press itself was refused).
+	if (Count == 0)
+	{
+		RetryHeldBlock();
+	}
 }
 
 void AARPlayerCharacter::ARBlock(int32 bHold)
