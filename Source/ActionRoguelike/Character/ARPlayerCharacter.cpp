@@ -49,19 +49,37 @@ AARPlayerCharacter::AARPlayerCharacter()
 void AARPlayerCharacter::SetWalking(bool bWalk)
 {
 	bWalking = bWalk;
-	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	UpdateMoveSpeed();
+}
+
+void AARPlayerCharacter::UpdateMoveSpeed()
+{
+	// The one place that writes the speed: the walk key and the block both ask for the walk speed.
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
 	{
-		if (RunSpeed <= 0.f)
-		{
-			RunSpeed = Movement->MaxWalkSpeed;
-		}
-		Movement->MaxWalkSpeed = bWalk ? WalkSpeed : RunSpeed;
+		return;
 	}
+	if (RunSpeed <= 0.f)
+	{
+		RunSpeed = Movement->MaxWalkSpeed;
+	}
+	const bool bBlocking = AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Blocking.GetTag());
+	Movement->MaxWalkSpeed = bWalking || bBlocking ? WalkSpeed : RunSpeed;
+}
+
+void AARPlayerCharacter::OnBlockingTagChanged(const FGameplayTag /*Tag*/, int32 /*Count*/)
+{
+	UpdateMoveSpeed();
 }
 
 void AARPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// The jog speed is read once, before anything (walk, block) lowers it.
+	RunSpeed = GetCharacterMovement()->MaxWalkSpeed;
+	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Blocking.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnBlockingTagChanged);
 
 	if (ParkourIKAnimClass)
 	{

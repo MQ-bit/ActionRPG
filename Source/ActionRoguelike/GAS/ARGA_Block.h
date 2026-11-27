@@ -58,12 +58,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Block", meta = (ClampMin = "0"))
 	float ReblockDelay = 0.3f;
 
-	/** Movement speed while blocking (cm/s). */
-	UPROPERTY(EditDefaultsOnly, Category = "Block", meta = (ClampMin = "0"))
-	float BlockMoveSpeed = 300.f;
-
 private:
 	double BlockStartTime = 0.0;
 	double LastBlockEndTime = -1000.0;
-	float SavedMaxWalkSpeed = -1.f;
 };

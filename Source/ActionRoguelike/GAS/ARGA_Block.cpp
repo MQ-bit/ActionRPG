@@ -57,15 +57,9 @@ void UARGA_Block::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const
 		return;
 	}
 
+	// The walk speed while blocking comes from the player (State.Blocking), which also owns the walk key.
 	const AActor* Avatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
 	BlockStartTime = Avatar && Avatar->GetWorld() ? Avatar->GetWorld()->GetTimeSeconds() : 0.0;
-
-	if (const ACharacter* Character = Cast<ACharacter>(Avatar))
-	{
-		UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
-		SavedMaxWalkSpeed = Movement->MaxWalkSpeed;
-		Movement->MaxWalkSpeed = FMath::Min(Movement->MaxWalkSpeed, BlockMoveSpeed);
-	}
 }
 
 void UARGA_Block::InputReleased(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
@@ -82,11 +76,6 @@ void UARGA_Block::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGam
 	{
 		const AActor* Avatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
 		LastBlockEndTime = Avatar && Avatar->GetWorld() ? Avatar->GetWorld()->GetTimeSeconds() : LastBlockEndTime;
-		if (const ACharacter* Character = Cast<ACharacter>(Avatar); Character && SavedMaxWalkSpeed >= 0.f)
-		{
-			Character->GetCharacterMovement()->MaxWalkSpeed = SavedMaxWalkSpeed;
-		}
-		SavedMaxWalkSpeed = -1.f;
 	}
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
