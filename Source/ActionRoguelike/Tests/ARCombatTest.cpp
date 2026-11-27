@@ -156,6 +156,9 @@ bool FARBlockHoldTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("pressing blocks"), ASC->HasMatchingGameplayTag(Blocking));
 	TestNotNull(TEXT("the hit code finds the running block"), UARGA_Block::FindActiveBlock(ASC));
 	TestEqual(TEXT("walks while blocking"), Movement->MaxWalkSpeed, 300.f);
+	Player->SetWalking(true);
+	Player->SetWalking(false);
+	TestEqual(TEXT("releasing the walk key while blocking keeps the walk speed"), Movement->MaxWalkSpeed, 300.f);
 
 	ASC->AbilityInputTagReleased(Input);
 	TestFalse(TEXT("releasing stops the block"), ASC->HasMatchingGameplayTag(Blocking));

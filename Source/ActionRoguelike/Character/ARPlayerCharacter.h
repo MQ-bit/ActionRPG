@@ -106,6 +106,9 @@ protected:
 	void OnBlockPressed();
 	void OnBlockReleased();
 	void OnBlockGateTagChanged(const FGameplayTag Tag, int32 Count);
+	void OnBlockingTagChanged(const FGameplayTag Tag, int32 Count);
+	/** Walk speed while walking or blocking, the jog speed otherwise. */
+	void UpdateMoveSpeed();
 	/** Starts the block if the button is held and it is not running; keeps retrying while a lockout refuses it. */
 	void RetryHeldBlock();
 	FTimerHandle BlockRetryTimer;
