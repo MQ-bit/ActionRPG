@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Character/ARCharacterBase.h"
+#include "GameplayTagContainer.h"
 #include "AREnemyCharacter.generated.h"
 
 class UBehaviorTree;
@@ -30,6 +31,9 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void OnDeath() override;
+
+	void OnHitReactTagChanged(const FGameplayTag Tag, int32 Count);
+	bool bPausedForHitReact = false;
 
 	/** Health bar above the head. Without a widget class (set in the data-only Blueprint) it shows nothing. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")

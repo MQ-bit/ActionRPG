@@ -3,6 +3,11 @@
 #include "Character/AREnemyCharacter.h"
 
 #include "AI/AREnemyAIController.h"
+#include "GAS/ARAbilitySystemComponent.h"
+#include "AIController.h"
+#include "BrainComponent.h"
+#include "GAS/ARGameplayTags.h"
+#include "Navigation/PathFollowingComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -57,6 +62,42 @@ void AAREnemyCharacter::BeginPlay()
 	if (UARHealthBarWidget* HealthBar = Cast<UARHealthBarWidget>(HealthBarComponent->GetUserWidgetObject()))
 	{
 		HealthBar->BindToCharacter(this);
+	}
+
+	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_HitReact.GetTag(), EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &AAREnemyCharacter::OnHitReactTagChanged);
+}
+
+void AAREnemyCharacter::OnHitReactTagChanged(const FGameplayTag /*Tag*/, int32 Count)
+{
+	// The current move is paused, and the behavior tree too: otherwise a cancelled attack lets it start a new MoveTo
+	// during the reaction and the enemy slides. Only a pause made here is resumed.
+	const AAIController* AI = Cast<AAIController>(GetController());
+	UPathFollowingComponent* PathFollowing = AI ? AI->GetPathFollowingComponent() : nullptr;
+	UBrainComponent* Brain = AI ? AI->GetBrainComponent() : nullptr;
+	if (Count > 0 && !bPausedForHitReact)
+	{
+		bPausedForHitReact = true;
+		if (PathFollowing)
+		{
+			PathFollowing->PauseMove();
+		}
+		if (Brain)
+		{
+			Brain->PauseLogic(TEXT("HitReact"));
+		}
+	}
+	else if (Count == 0 && bPausedForHitReact)
+	{
+		bPausedForHitReact = false;
+		if (Brain)
+		{
+			Brain->ResumeLogic(TEXT("HitReact"));
+		}
+		if (PathFollowing)
+		{
+			PathFollowing->ResumeMove();
+		}
 	}
 }
 

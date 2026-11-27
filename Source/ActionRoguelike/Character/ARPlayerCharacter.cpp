@@ -49,19 +49,37 @@ AARPlayerCharacter::AARPlayerCharacter()
 void AARPlayerCharacter::SetWalking(bool bWalk)
 {
 	bWalking = bWalk;
-	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	UpdateMoveSpeed();
+}
+
+void AARPlayerCharacter::UpdateMoveSpeed()
+{
+	// The one place that writes the speed: the walk key and the block both ask for the walk speed.
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
 	{
-		if (RunSpeed <= 0.f)
-		{
-			RunSpeed = Movement->MaxWalkSpeed;
-		}
-		Movement->MaxWalkSpeed = bWalk ? WalkSpeed : RunSpeed;
+		return;
 	}
+	if (RunSpeed <= 0.f)
+	{
+		RunSpeed = Movement->MaxWalkSpeed;
+	}
+	const bool bBlocking = AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Blocking.GetTag());
+	Movement->MaxWalkSpeed = bWalking || bBlocking ? WalkSpeed : RunSpeed;
+}
+
+void AARPlayerCharacter::OnBlockingTagChanged(const FGameplayTag /*Tag*/, int32 /*Count*/)
+{
+	UpdateMoveSpeed();
 }
 
 void AARPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// The jog speed is read once, before anything (walk, block) lowers it.
+	RunSpeed = GetCharacterMovement()->MaxWalkSpeed;
+	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Blocking.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnBlockingTagChanged);
 
 	if (ParkourIKAnimClass)
 	{
@@ -75,6 +93,8 @@ void AARPlayerCharacter::BeginPlay()
 
 	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Parkouring.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnActionTagChanged);
 	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Attacking.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnActionTagChanged);
+	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_HitReact.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnBlockGateTagChanged);
+	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_Parkouring.GetTag(), EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AARPlayerCharacter::OnBlockGateTagChanged);
 
 	APlayerController* PC = Cast<APlayerController>(GetController());
 	if (!PC)
@@ -130,6 +150,11 @@ void AARPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		{
 			EIC->BindAction(ToggleWeaponAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnToggleWeaponInput);
 		}
+		if (BlockAction)
+		{
+			EIC->BindAction(BlockAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnBlockPressed);
+			EIC->BindAction(BlockAction, ETriggerEvent::Completed, this, &AARPlayerCharacter::OnBlockReleased);
+		}
 		if (WalkAction)
 		{
 			EIC->BindAction(WalkAction, ETriggerEvent::Started, this, &AARPlayerCharacter::SetWalking, true);
@@ -159,9 +184,10 @@ void AARPlayerCharacter::Move(const FInputActionValue& Value)
 	const FVector2D Raw = Value.Get<FVector2D>();
 	ARMoveInput(Raw.X, Raw.Y);
 
-	// The attack montage animates the whole body, so moving during it looks like sliding.
+	// The attack and hit montages animate the whole body, so moving during them looks like sliding (blocking may walk).
 	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag())
-		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag()))
+		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag())
+		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_HitReact.GetTag()))
 	{
 		return;
 	}
@@ -216,9 +242,9 @@ void AARPlayerCharacter::OnLockOnInput()
 
 void AARPlayerCharacter::OnJumpInput()
 {
-	// The attack montage animates the whole body; a jump would cut it. A running vault or mantle is not interrupted either.
-	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag())
-		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag()))
+	// The attack montage animates the whole body; a jump would cut it. A running vault or mantle, a hit reaction and a
+	// block are not interrupted either.
+	if (IsBusyWithAction())
 	{
 		return;
 	}
@@ -299,13 +325,62 @@ void AARPlayerCharacter::ARAttack()
 
 void AARPlayerCharacter::OnToggleWeaponInput()
 {
-	// The attack read its weapon when it started and the parkour hides the mesh: no swapping in the middle of either.
-	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag())
-		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag()))
+	// The attack read its weapon when it started and the parkour hides the mesh: no swapping in the middle of an action.
+	if (IsBusyWithAction())
 	{
 		return;
 	}
 	Equipment->ToggleDefaultWeapon();
+}
+
+bool AARPlayerCharacter::IsBusyWithAction() const
+{
+	static const FGameplayTagContainer BusyTags = FGameplayTagContainer::CreateFromArray(TArray<FGameplayTag>{
+		TAG_State_Attacking.GetTag(), TAG_State_Parkouring.GetTag(), TAG_State_HitReact.GetTag(), TAG_State_Blocking.GetTag() });
+	return AbilitySystemComponent->HasAnyMatchingGameplayTags(BusyTags);
+}
+
+void AARPlayerCharacter::OnBlockPressed()
+{
+	bBlockHeld = true;
+	RetryHeldBlock();
+}
+
+void AARPlayerCharacter::OnBlockReleased()
+{
+	bBlockHeld = false;
+	GetWorldTimerManager().ClearTimer(BlockRetryTimer);
+	AbilitySystemComponent->AbilityInputTagReleased(TAG_InputTag_Block.GetTag());
+}
+
+void AARPlayerCharacter::RetryHeldBlock()
+{
+	if (!bBlockHeld || AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Blocking.GetTag()))
+	{
+		GetWorldTimerManager().ClearTimer(BlockRetryTimer);
+		return;
+	}
+	AbilitySystemComponent->AbilityInputTagPressed(TAG_InputTag_Block.GetTag());
+	// A press refused by the re-block lockout keeps trying while the button is held (a refusal by a hit reaction or a
+	// parkour move is picked up by OnBlockGateTagChanged as well).
+	if (!AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Blocking.GetTag()) && !GetWorldTimerManager().IsTimerActive(BlockRetryTimer))
+	{
+		GetWorldTimerManager().SetTimer(BlockRetryTimer, this, &AARPlayerCharacter::RetryHeldBlock, 0.05f, true);
+	}
+}
+
+void AARPlayerCharacter::OnBlockGateTagChanged(const FGameplayTag /*Tag*/, int32 Count)
+{
+	// A block held through a hit reaction or a parkour move starts as soon as that ends (the press itself was refused).
+	if (Count == 0)
+	{
+		RetryHeldBlock();
+	}
+}
+
+void AARPlayerCharacter::ARBlock(int32 bHold)
+{
+	bHold ? OnBlockPressed() : OnBlockReleased();
 }
 
 void AARPlayerCharacter::ARToggleWeapon()

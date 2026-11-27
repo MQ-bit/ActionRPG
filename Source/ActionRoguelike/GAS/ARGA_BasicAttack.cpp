@@ -12,7 +12,9 @@
 #include "GameFramework/Actor.h"
 #include "Character/AREquipmentComponent.h"
 #include "Combat/ARWeaponData.h"
+#include "Core/ARCombat.h"
 #include "Core/ARTeam.h"
+#include "GAS/ARGA_Block.h"
 #include "GameplayEffect.h"
 #include "GAS/ARGameplayTags.h"
 #include "GenericTeamAgentInterface.h"
@@ -25,8 +27,10 @@ UARGA_BasicAttack::UARGA_BasicAttack()
 	SetAssetTags(FGameplayTagContainer(TAG_Ability_Attack.GetTag()));
 	// Granted to the owner while the ability is active; the character reads it to block movement.
 	ActivationOwnedTags.AddTag(TAG_State_Attacking.GetTag());
-	// No attacking in the middle of a vault or mantle.
+	// No attacking in the middle of a vault or mantle, a hit reaction or a block.
 	ActivationBlockedTags.AddTag(TAG_State_Parkouring.GetTag());
+	ActivationBlockedTags.AddTag(TAG_State_HitReact.GetTag());
+	ActivationBlockedTags.AddTag(TAG_State_Blocking.GetTag());
 }
 
 void UARGA_BasicAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
@@ -174,6 +178,7 @@ void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 		: ActiveDamage;
 
 	bool bDamagedAnEnemy = false;
+	TWeakObjectPtr<AActor> ParriedBy;
 	TSet<AActor*> Damaged;
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
@@ -198,12 +203,38 @@ void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 			continue;
 		}
 
+		// A blocking target in front takes part of the damage; a parry takes none and staggers this attacker.
+		ARCombat::EDefense Defense = ARCombat::EDefense::None;
+		float BlockScale = 1.f;
+		if (const UARGA_Block* Block = UARGA_Block::FindActiveBlock(TargetASC))
+		{
+			Defense = ARCombat::ResolveDefense(true, static_cast<float>(World->GetTimeSeconds() - Block->GetBlockStartTime()), Block->GetParryWindow(),
+				Target->GetActorForwardVector(), Avatar->GetActorLocation() - Target->GetActorLocation(), Block->GetFrontHalfAngle());
+			BlockScale = Block->GetBlockDamageScale();
+		}
+		if (Defense == ARCombat::EDefense::Parried)
+		{
+			ParriedBy = Target;
+			continue;
+		}
+
+		const float Amount = Defense == ARCombat::EDefense::Blocked ? HitDamage * BlockScale : HitDamage;
 		FGameplayEffectSpecHandle Spec = MakeOutgoingGameplayEffectSpec(DamageEffectClass, GetAbilityLevel());
 		if (Spec.IsValid())
 		{
-			Spec.Data->SetSetByCallerMagnitude(TAG_Data_Damage.GetTag(), -HitDamage);
+			Spec.Data->SetSetByCallerMagnitude(TAG_Data_Damage.GetTag(), -Amount);
 			const FActiveGameplayEffectHandle Applied = SourceASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), TargetASC);
-			bDamagedAnEnemy |= HitDamage > 0.f && Applied.WasSuccessfullyApplied();
+			const bool bApplied = Amount > 0.f && Applied.WasSuccessfullyApplied();
+			bDamagedAnEnemy |= bApplied;
+			// A blocked hit makes no hit reaction; a real hit does.
+			if (bApplied && Defense == ARCombat::EDefense::None)
+			{
+				FGameplayEventData Event;
+				Event.EventTag = TAG_Event_Damaged.GetTag();
+				Event.Instigator = Avatar;
+				Event.Target = Target;
+				UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Target, TAG_Event_Damaged.GetTag(), Event);
+			}
 		}
 	}
 
@@ -215,5 +246,15 @@ void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 		{
 			Equipment->OnWeaponHit();
 		}
+	}
+
+	// Last: the parried attacker's hit reaction cancels this ability, so nothing of it may run after this.
+	if (AActor* Parrier = ParriedBy.Get())
+	{
+		FGameplayEventData Event;
+		Event.EventTag = TAG_Event_Parried.GetTag();
+		Event.Instigator = Parrier;
+		Event.Target = Avatar;
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Avatar, TAG_Event_Parried.GetTag(), Event);
 	}
 }

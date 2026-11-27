@@ -100,6 +100,30 @@ protected:
 
 	void OnToggleWeaponInput();
 
+	/** True while attacking, parkouring, reacting to a hit or blocking: jump, parkour and weapon swaps wait. */
+	bool IsBusyWithAction() const;
+
+	void OnBlockPressed();
+	void OnBlockReleased();
+	void OnBlockGateTagChanged(const FGameplayTag Tag, int32 Count);
+	void OnBlockingTagChanged(const FGameplayTag Tag, int32 Count);
+	/** Walk speed while walking or blocking, the jog speed otherwise. */
+	void UpdateMoveSpeed();
+	/** Starts the block if the button is held and it is not running; keeps retrying while a lockout refuses it. */
+	void RetryHeldBlock();
+	FTimerHandle BlockRetryTimer;
+
+	/** The block input is held (the block itself may be refused for now, e.g. during a hit reaction). */
+	bool bBlockHeld = false;
+
+	/** Console command `ARBlock 1` / `ARBlock 0`: same path as holding / releasing the block input. */
+	UFUNCTION(Exec)
+	void ARBlock(int32 bHold);
+
+	/** Held to block (right mouse button). */
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TObjectPtr<UInputAction> BlockAction;
+
 	/** Held weapon, its mesh and durability. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	TObjectPtr<class UAREquipmentComponent> Equipment;
