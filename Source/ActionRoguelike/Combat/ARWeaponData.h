@@ -48,6 +48,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Attack", meta = (ClampMin = "0"))
 	float Damage = 30.f;
 
+	/** Montage play rate while equipped (below 1 = heavier, slower swings). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Attack", meta = (ClampMin = "0.1", ClampMax = "2"))
+	float PlayRate = 1.f;
+
 	/** Distance from the avatar to the center of the hit sphere (cm). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Attack", meta = (ClampMin = "0"))
 	float HitRange = 160.f;
@@ -75,6 +79,7 @@ struct FARAttackValues
 	float Damage = 0.f;
 	float HitRange = 0.f;
 	float HitRadius = 0.f;
+	float PlayRate = 1.f;
 };
 
 namespace ARWeapon
@@ -94,6 +99,7 @@ namespace ARWeapon
 		Out.Damage = Weapon->Damage * (bBroken ? Weapon->BrokenDamageScale : 1.f);
 		Out.HitRange = Weapon->HitRange;
 		Out.HitRadius = Weapon->HitRadius;
+		Out.PlayRate = Weapon->PlayRate;
 		return Out;
 	}
 }

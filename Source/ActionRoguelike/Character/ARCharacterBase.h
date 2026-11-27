@@ -37,6 +37,18 @@ public:
 	/** Read access for UI (see UARHealthBarWidget). Change attributes only through Gameplay Effects. */
 	UARAttributeSet* GetAttributeSet() const { return AttributeSet; }
 
+	/**
+	 * Impact freeze: runs this character at TimeDilation for Seconds. Overlapping hit stops (several attackers) extend the
+	 * freeze to the latest end; the dilation from before the first one is restored at the end.
+	 */
+	void ApplyHitStop(float Seconds, float TimeDilation);
+
+private:
+	FTimerHandle HitStopTimer;
+	float TimeDilationBeforeHitStop = 1.f;
+
+public:
+
 	/** Broadcast once, when Health reaches 0. */
 	FAROnCharacterDied OnDied;
 
