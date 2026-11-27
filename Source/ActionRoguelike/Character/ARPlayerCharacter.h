@@ -100,6 +100,20 @@ protected:
 
 	void OnToggleWeaponInput();
 
+	/** True while attacking, parkouring, reacting to a hit or blocking: jump, parkour and weapon swaps wait. */
+	bool IsBusyWithAction() const;
+
+	void OnBlockPressed();
+	void OnBlockReleased();
+
+	/** Console command `ARBlock 1` / `ARBlock 0`: same path as holding / releasing the block input. */
+	UFUNCTION(Exec)
+	void ARBlock(int32 bHold);
+
+	/** Held to block (right mouse button). */
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TObjectPtr<UInputAction> BlockAction;
+
 	/** Held weapon, its mesh and durability. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	TObjectPtr<class UAREquipmentComponent> Equipment;

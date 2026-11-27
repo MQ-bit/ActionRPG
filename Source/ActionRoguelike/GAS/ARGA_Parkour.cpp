@@ -55,6 +55,9 @@ UARGA_Parkour::UARGA_Parkour()
 	SetAssetTags(FGameplayTagContainer(TAG_Ability_Parkour.GetTag()));
 	ActivationOwnedTags.AddTag(TAG_State_Parkouring.GetTag());
 	ActivationBlockedTags.AddTag(TAG_State_Attacking.GetTag());
+	// Also covers a jump buffered before a hit reaction or a block started.
+	ActivationBlockedTags.AddTag(TAG_State_HitReact.GetTag());
+	ActivationBlockedTags.AddTag(TAG_State_Blocking.GetTag());
 }
 
 bool UARGA_Parkour::CanActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,

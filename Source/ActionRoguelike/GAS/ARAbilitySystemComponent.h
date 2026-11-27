@@ -21,4 +21,7 @@ public:
 
 	/** Activates every granted ability bound to this input tag, or forwards the press to it if it is already active. */
 	void AbilityInputTagPressed(const FGameplayTag& InputTag);
+
+	/** Forwards a release to the active abilities bound to this input tag (held abilities such as the block end on it). */
+	void AbilityInputTagReleased(const FGameplayTag& InputTag);
 };

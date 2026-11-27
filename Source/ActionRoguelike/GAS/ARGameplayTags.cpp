@@ -11,3 +11,10 @@ UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_State_LockedOn, "State.LockedOn", "Owner hold
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_InputTag_Attack, "InputTag.Attack", "Input binding for the attack ability");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Event_Attack_Hit, "Event.Attack.Hit", "Sent by the attack montage at the hit frame");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Data_Damage, "Data.Damage", "SetByCaller damage magnitude (negative = damage)");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Ability_HitReact, "Ability.HitReact", "Short reaction after taking damage or being parried");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Ability_Block, "Ability.Block", "Hold to block, parry at the start of the block");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_State_HitReact, "State.HitReact", "Owner is reacting to a hit");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_State_Blocking, "State.Blocking", "Owner is blocking");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_InputTag_Block, "InputTag.Block", "Input binding for the block ability (held)");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Event_Damaged, "Event.Damaged", "Sent to a target that took damage; Instigator = attacker");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Event_Parried, "Event.Parried", "Sent to an attacker whose hit was parried; Instigator = the parrying target");

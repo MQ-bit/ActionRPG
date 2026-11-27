@@ -52,3 +52,27 @@ void UARAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag& Input
 		}
 	}
 }
+
+void UARAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTag& InputTag)
+{
+	if (!InputTag.IsValid())
+	{
+		return;
+	}
+
+	TArray<FGameplayAbilitySpecHandle> Handles;
+	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		if (Spec.IsActive() && Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
+		{
+			Handles.Add(Spec.Handle);
+		}
+	}
+	for (const FGameplayAbilitySpecHandle& Handle : Handles)
+	{
+		if (FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle))
+		{
+			AbilitySpecInputReleased(*Spec);
+		}
+	}
+}

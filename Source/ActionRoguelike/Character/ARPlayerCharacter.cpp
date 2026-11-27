@@ -130,6 +130,11 @@ void AARPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		{
 			EIC->BindAction(ToggleWeaponAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnToggleWeaponInput);
 		}
+		if (BlockAction)
+		{
+			EIC->BindAction(BlockAction, ETriggerEvent::Started, this, &AARPlayerCharacter::OnBlockPressed);
+			EIC->BindAction(BlockAction, ETriggerEvent::Completed, this, &AARPlayerCharacter::OnBlockReleased);
+		}
 		if (WalkAction)
 		{
 			EIC->BindAction(WalkAction, ETriggerEvent::Started, this, &AARPlayerCharacter::SetWalking, true);
@@ -159,9 +164,10 @@ void AARPlayerCharacter::Move(const FInputActionValue& Value)
 	const FVector2D Raw = Value.Get<FVector2D>();
 	ARMoveInput(Raw.X, Raw.Y);
 
-	// The attack montage animates the whole body, so moving during it looks like sliding.
+	// The attack and hit montages animate the whole body, so moving during them looks like sliding (blocking may walk).
 	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag())
-		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag()))
+		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag())
+		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_HitReact.GetTag()))
 	{
 		return;
 	}
@@ -216,9 +222,9 @@ void AARPlayerCharacter::OnLockOnInput()
 
 void AARPlayerCharacter::OnJumpInput()
 {
-	// The attack montage animates the whole body; a jump would cut it. A running vault or mantle is not interrupted either.
-	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag())
-		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag()))
+	// The attack montage animates the whole body; a jump would cut it. A running vault or mantle, a hit reaction and a
+	// block are not interrupted either.
+	if (IsBusyWithAction())
 	{
 		return;
 	}
@@ -299,13 +305,34 @@ void AARPlayerCharacter::ARAttack()
 
 void AARPlayerCharacter::OnToggleWeaponInput()
 {
-	// The attack read its weapon when it started and the parkour hides the mesh: no swapping in the middle of either.
-	if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Attacking.GetTag())
-		|| AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Parkouring.GetTag()))
+	// The attack read its weapon when it started and the parkour hides the mesh: no swapping in the middle of an action.
+	if (IsBusyWithAction())
 	{
 		return;
 	}
 	Equipment->ToggleDefaultWeapon();
+}
+
+bool AARPlayerCharacter::IsBusyWithAction() const
+{
+	static const FGameplayTagContainer BusyTags = FGameplayTagContainer::CreateFromArray(TArray<FGameplayTag>{
+		TAG_State_Attacking.GetTag(), TAG_State_Parkouring.GetTag(), TAG_State_HitReact.GetTag(), TAG_State_Blocking.GetTag() });
+	return AbilitySystemComponent->HasAnyMatchingGameplayTags(BusyTags);
+}
+
+void AARPlayerCharacter::OnBlockPressed()
+{
+	AbilitySystemComponent->AbilityInputTagPressed(TAG_InputTag_Block.GetTag());
+}
+
+void AARPlayerCharacter::OnBlockReleased()
+{
+	AbilitySystemComponent->AbilityInputTagReleased(TAG_InputTag_Block.GetTag());
+}
+
+void AARPlayerCharacter::ARBlock(int32 bHold)
+{
+	bHold ? OnBlockPressed() : OnBlockReleased();
 }
 
 void AARPlayerCharacter::ARToggleWeapon()

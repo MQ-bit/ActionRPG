@@ -3,6 +3,10 @@
 #include "Character/AREnemyCharacter.h"
 
 #include "AI/AREnemyAIController.h"
+#include "GAS/ARAbilitySystemComponent.h"
+#include "AIController.h"
+#include "GAS/ARGameplayTags.h"
+#include "Navigation/PathFollowingComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -57,6 +61,28 @@ void AAREnemyCharacter::BeginPlay()
 	if (UARHealthBarWidget* HealthBar = Cast<UARHealthBarWidget>(HealthBarComponent->GetUserWidgetObject()))
 	{
 		HealthBar->BindToCharacter(this);
+	}
+
+	AbilitySystemComponent->RegisterGameplayTagEvent(TAG_State_HitReact.GetTag(), EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &AAREnemyCharacter::OnHitReactTagChanged);
+}
+
+void AAREnemyCharacter::OnHitReactTagChanged(const FGameplayTag /*Tag*/, int32 Count)
+{
+	// MoveTo keeps repathing, so the move is paused instead of letting the enemy slide while it reacts.
+	const AAIController* AI = Cast<AAIController>(GetController());
+	UPathFollowingComponent* PathFollowing = AI ? AI->GetPathFollowingComponent() : nullptr;
+	if (!PathFollowing)
+	{
+		return;
+	}
+	if (Count > 0)
+	{
+		PathFollowing->PauseMove();
+	}
+	else
+	{
+		PathFollowing->ResumeMove();
 	}
 }
 
