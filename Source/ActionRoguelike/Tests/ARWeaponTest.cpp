@@ -87,6 +87,9 @@ bool FARResolveAttackValuesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("weapon damage"), Armed.Damage, 40.f);
 	TestEqual(TEXT("weapon range"), Armed.HitRange, 170.f);
 	TestEqual(TEXT("weapon radius"), Armed.HitRadius, 90.f);
+	TestEqual(TEXT("unarmed keeps its play rate"), ARWeapon::ResolveAttackValues(Unarmed, nullptr, false).PlayRate, 1.f);
+	Bat->PlayRate = 0.8f;
+	TestEqual(TEXT("weapon play rate"), ARWeapon::ResolveAttackValues(Unarmed, Bat, false).PlayRate, 0.8f);
 
 	const FARAttackValues Broken = ARWeapon::ResolveAttackValues(Unarmed, Bat, true);
 	TestEqual(TEXT("a broken weapon hits for the broken scale"), Broken.Damage, 10.f);

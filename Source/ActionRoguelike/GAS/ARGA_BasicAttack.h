@@ -68,7 +68,26 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Attack|Hit")
 	bool bDrawDebugHit = false;
 
+	/** Montage play rate of the unarmed combo (a weapon brings its own). Below 1 = heavier, slower swings. */
+	UPROPERTY(EditDefaultsOnly, Category = "Attack", meta = (ClampMin = "0.1", ClampMax = "2"))
+	float MontagePlayRate = 1.f;
+
+	/** Impact freeze: attacker and target run at HitStopTimeDilation for HitStopSeconds when a hit lands. 0 = off. */
+	UPROPERTY(EditDefaultsOnly, Category = "Attack|Feel", meta = (ClampMin = "0"))
+	float HitStopSeconds = 0.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Attack|Feel", meta = (ClampMin = "0.01", ClampMax = "1"))
+	float HitStopTimeDilation = 0.05f;
+
+	/** Played on the local player's camera when a hit lands on or from the player. Empty = no shake. */
+	UPROPERTY(EditDefaultsOnly, Category = "Attack|Feel")
+	TSubclassOf<class UCameraShakeBase> HitCameraShake;
+
 private:
+	void PlayImpactFeel(AActor* Attacker, AActor* Target) const;
+
+	float ActivePlayRate = 1.f;
+
 	FARComboState ComboState;
 
 	// Values of the running activation: the fields above, overridden by the weapon equipped when the attack started.

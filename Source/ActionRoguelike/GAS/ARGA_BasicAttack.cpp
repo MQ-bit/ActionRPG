@@ -12,7 +12,11 @@
 #include "GameFramework/Actor.h"
 #include "Character/AREquipmentComponent.h"
 #include "Combat/ARWeaponData.h"
+#include "Camera/CameraShakeBase.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Core/ARCombat.h"
+#include "GameFramework/PlayerController.h"
+#include "TimerManager.h"
 #include "Core/ARTeam.h"
 #include "GAS/ARGA_Block.h"
 #include "GameplayEffect.h"
@@ -42,6 +46,7 @@ void UARGA_BasicAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	Unarmed.Damage = Damage;
 	Unarmed.HitRange = HitRange;
 	Unarmed.HitRadius = HitRadius;
+	Unarmed.PlayRate = MontagePlayRate;
 	const AActor* Avatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
 	UAREquipmentComponent* Equipment = Avatar ? Avatar->FindComponentByClass<UAREquipmentComponent>() : nullptr;
 	ActiveEquipment = Equipment;
@@ -51,6 +56,7 @@ void UARGA_BasicAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	ActiveDamage = Values.Damage;
 	ActiveHitRange = Values.HitRange;
 	ActiveHitRadius = Values.HitRadius;
+	ActivePlayRate = FMath::Max(0.1f, Values.PlayRate);
 
 	if (ActiveMontages.IsEmpty() || !ActiveMontages[0] || !CommitAbility(Handle, ActorInfo, ActivationInfo))
 	{
@@ -72,7 +78,7 @@ void UARGA_BasicAttack::PlayStep(int32 StepIndex)
 	UAnimMontage* Montage = ActiveMontages.IsValidIndex(StepIndex) ? ActiveMontages[StepIndex].Get() : nullptr;
 	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
 	UAnimInstance* AnimInstance = CurrentActorInfo ? CurrentActorInfo->GetAnimInstance() : nullptr;
-	if (!Montage || !ASC || !AnimInstance || ASC->PlayMontage(this, CurrentActivationInfo, Montage, 1.f) <= 0.f)
+	if (!Montage || !ASC || !AnimInstance || ASC->PlayMontage(this, CurrentActivationInfo, Montage, ActivePlayRate) <= 0.f)
 	{
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 		return;
@@ -140,6 +146,47 @@ void UARGA_BasicAttack::OnMontageBlendingOut(UAnimMontage* /*Montage*/, bool bIn
 void UARGA_BasicAttack::OnMontageEnded(UAnimMontage* /*Montage*/, bool bInterrupted, int32 PlaybackId)
 {
 	ApplyComboAction(ComboState.OnEnded(PlaybackId, bInterrupted));
+}
+
+void UARGA_BasicAttack::PlayImpactFeel(AActor* Attacker, AActor* Target) const
+{
+	UWorld* World = Attacker ? Attacker->GetWorld() : nullptr;
+	if (!World)
+	{
+		return;
+	}
+
+	// Hit stop: both bodies freeze for a moment. The restore runs on world time, which the custom dilation does not slow.
+	if (HitStopSeconds > 0.f)
+	{
+		for (AActor* Actor : { Attacker, Target })
+		{
+			if (!Actor)
+			{
+				continue;
+			}
+			Actor->CustomTimeDilation = HitStopTimeDilation;
+			FTimerHandle Handle;
+			World->GetTimerManager().SetTimer(Handle, FTimerDelegate::CreateWeakLambda(Actor, [Actor]()
+			{
+				Actor->CustomTimeDilation = 1.f;
+			}), HitStopSeconds, false);
+		}
+	}
+
+	if (HitCameraShake)
+	{
+		for (const AActor* Actor : { Attacker, Target })
+		{
+			const APawn* Pawn = Cast<APawn>(Actor);
+			const APlayerController* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+			if (PC && PC->IsLocalController() && PC->PlayerCameraManager)
+			{
+				PC->PlayerCameraManager->StartCameraShake(HitCameraShake);
+				break;
+			}
+		}
+	}
 }
 
 void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
@@ -226,6 +273,10 @@ void UARGA_BasicAttack::OnHitEvent(FGameplayEventData Payload)
 			const FActiveGameplayEffectHandle Applied = SourceASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), TargetASC);
 			const bool bApplied = Amount > 0.f && Applied.WasSuccessfullyApplied();
 			bDamagedAnEnemy |= bApplied;
+			if (bApplied)
+			{
+				PlayImpactFeel(Avatar, Target);
+			}
 			// A blocked hit makes no hit reaction; a real hit does.
 			if (bApplied && Defense == ARCombat::EDefense::None)
 			{
